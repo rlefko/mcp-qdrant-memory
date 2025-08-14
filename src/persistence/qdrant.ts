@@ -276,7 +276,7 @@ export class QdrantPersistence {
         throw new Error("VOYAGE_API_KEY environment variable is required for Voyage embeddings");
       }
 
-      const model = process.env.EMBEDDING_MODEL || "voyage-3-lite";
+      const model = process.env.EMBEDDING_MODEL || "voyage-3.5-lite"; // Read from settings.txt via add-mcp
       
       const response = await fetch('https://api.voyageai.com/v1/embeddings', {
         method: 'POST',
@@ -288,6 +288,7 @@ export class QdrantPersistence {
           input: text,
           model: model,
           input_type: "document",
+          output_dimension: 512, // Required: voyage-3.5-lite defaults to 1024, we need 512 for Qdrant
         }),
       });
 
@@ -300,7 +301,6 @@ export class QdrantPersistence {
       return data.data[0].embedding;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown Voyage error";
-      // console.error("Voyage embedding error:", message);
       throw new Error(`Failed to generate embeddings with Voyage: ${message}`);
     }
   }
