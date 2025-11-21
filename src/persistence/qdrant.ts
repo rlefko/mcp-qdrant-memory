@@ -345,6 +345,7 @@ export class QdrantPersistence {
       };
       
       await this.client.upsert(COLLECTION_NAME, {
+        wait: true,
         points: [
           {
             id,
@@ -388,6 +389,7 @@ export class QdrantPersistence {
     };
 
     await this.client.upsert(COLLECTION_NAME, {
+      wait: true,
       points: [
         {
           id,
