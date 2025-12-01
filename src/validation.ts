@@ -3,10 +3,12 @@ import { Entity, Relation } from "./types.js";
 
 export interface CreateEntitiesRequest {
   entities: Entity[];
+  collection?: string;
 }
 
 export interface CreateRelationsRequest {
   relations: Relation[];
+  collection?: string;
 }
 
 export interface AddObservationsRequest {
@@ -14,10 +16,12 @@ export interface AddObservationsRequest {
     entityName: string;
     contents: string[];
   }>;
+  collection?: string;
 }
 
 export interface DeleteEntitiesRequest {
   entityNames: string[];
+  collection?: string;
 }
 
 export interface DeleteObservationsRequest {
@@ -25,10 +29,12 @@ export interface DeleteObservationsRequest {
     entityName: string;
     observations: string[];
   }>;
+  collection?: string;
 }
 
 export interface DeleteRelationsRequest {
   relations: Relation[];
+  collection?: string;
 }
 
 export interface SearchSimilarRequest {
@@ -36,11 +42,21 @@ export interface SearchSimilarRequest {
   limit?: number;
   entityTypes?: string[];
   searchMode?: 'semantic' | 'keyword' | 'hybrid';
+  collection?: string;
 }
 
 export interface GetImplementationRequest {
   entityName: string;
   scope?: 'minimal' | 'logical' | 'dependencies';
+  collection?: string;
+}
+
+export interface ReadGraphRequest {
+  mode?: 'smart' | 'entities' | 'relationships' | 'raw';
+  limit?: number;
+  entityTypes?: string[];
+  entity?: string;
+  collection?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,25 +95,29 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { entities } = args;
+  const { entities, collection } = args;
   if (!Array.isArray(entities)) {
     console.error("DEBUG: entities is not an array:", typeof entities, entities);
     throw new McpError(ErrorCode.InvalidParams, "Invalid entities array");
   }
-  
+
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (!isEntity(entity)) {
       console.error(`DEBUG: Entity ${i} failed validation:`, entity);
       console.error(`DEBUG: Entity ${i} name type:`, typeof entity?.name);
-      console.error(`DEBUG: Entity ${i} entityType:`, entity?.entityType);  
+      console.error(`DEBUG: Entity ${i} entityType:`, entity?.entityType);
       console.error(`DEBUG: Entity ${i} entity_type:`, entity?.entity_type);
       console.error(`DEBUG: Entity ${i} observations:`, entity?.observations);
       throw new McpError(ErrorCode.InvalidParams, `Invalid entity at index ${i}`);
     }
   }
 
-  return { entities };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { entities, collection: collection as string | undefined };
 }
 
 export function validateCreateRelationsRequest(args: unknown): CreateRelationsRequest {
@@ -105,12 +125,16 @@ export function validateCreateRelationsRequest(args: unknown): CreateRelationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { relations } = args;
+  const { relations, collection } = args;
   if (!Array.isArray(relations) || !relations.every(isRelation)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid relations array");
   }
 
-  return { relations };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { relations, collection: collection as string | undefined };
 }
 
 export function validateAddObservationsRequest(args: unknown): AddObservationsRequest {
@@ -118,7 +142,7 @@ export function validateAddObservationsRequest(args: unknown): AddObservationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { observations } = args;
+  const { observations, collection } = args;
   if (!Array.isArray(observations)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid observations array");
   }
@@ -129,7 +153,11 @@ export function validateAddObservationsRequest(args: unknown): AddObservationsRe
     }
   }
 
-  return { observations: observations as AddObservationsRequest['observations'] };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { observations: observations as AddObservationsRequest['observations'], collection: collection as string | undefined };
 }
 
 export function validateDeleteEntitiesRequest(args: unknown): DeleteEntitiesRequest {
@@ -137,12 +165,16 @@ export function validateDeleteEntitiesRequest(args: unknown): DeleteEntitiesRequ
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { entityNames } = args;
+  const { entityNames, collection } = args;
   if (!isStringArray(entityNames)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid entityNames array");
   }
 
-  return { entityNames };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { entityNames, collection: collection as string | undefined };
 }
 
 export function validateDeleteObservationsRequest(args: unknown): DeleteObservationsRequest {
@@ -150,7 +182,7 @@ export function validateDeleteObservationsRequest(args: unknown): DeleteObservat
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { deletions } = args;
+  const { deletions, collection } = args;
   if (!Array.isArray(deletions)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid deletions array");
   }
@@ -161,7 +193,11 @@ export function validateDeleteObservationsRequest(args: unknown): DeleteObservat
     }
   }
 
-  return { deletions: deletions as DeleteObservationsRequest['deletions'] };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { deletions: deletions as DeleteObservationsRequest['deletions'], collection: collection as string | undefined };
 }
 
 export function validateDeleteRelationsRequest(args: unknown): DeleteRelationsRequest {
@@ -169,12 +205,16 @@ export function validateDeleteRelationsRequest(args: unknown): DeleteRelationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
-  const { relations } = args;
+  const { relations, collection } = args;
   if (!Array.isArray(relations) || !relations.every(isRelation)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid relations array");
   }
 
-  return { relations };
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { relations, collection: collection as string | undefined };
 }
 
 export function validateSearchSimilarRequest(args: unknown): SearchSimilarRequest {
@@ -204,7 +244,12 @@ export function validateSearchSimilarRequest(args: unknown): SearchSimilarReques
     }
   }
 
-  return { query, entityTypes, limit, searchMode: searchMode as 'semantic' | 'keyword' | 'hybrid' | undefined };
+  const { collection } = args;
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { query, entityTypes, limit, searchMode: searchMode as 'semantic' | 'keyword' | 'hybrid' | undefined, collection: collection as string | undefined };
 }
 
 export function validateGetImplementationRequest(args: unknown): GetImplementationRequest {
@@ -227,8 +272,55 @@ export function validateGetImplementationRequest(args: unknown): GetImplementati
     throw new McpError(ErrorCode.InvalidParams, "Invalid scope. Must be: minimal, logical, or dependencies");
   }
 
-  return { 
+  const { collection } = args;
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return {
     entityName: finalEntityName,
-    scope: finalScope as 'minimal' | 'logical' | 'dependencies'
+    scope: finalScope as 'minimal' | 'logical' | 'dependencies',
+    collection: collection as string | undefined
+  };
+}
+
+export function validateReadGraphRequest(args: unknown): ReadGraphRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { mode, limit, entityTypes, entity, collection } = args;
+
+  const validModes = ['smart', 'entities', 'relationships', 'raw'];
+  if (mode !== undefined) {
+    if (typeof mode !== 'string' || !validModes.includes(mode)) {
+      throw new McpError(ErrorCode.InvalidParams, "mode must be one of: smart, entities, relationships, raw");
+    }
+  }
+
+  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
+  }
+
+  if (entityTypes !== undefined) {
+    if (!Array.isArray(entityTypes) || !entityTypes.every(t => typeof t === 'string')) {
+      throw new McpError(ErrorCode.InvalidParams, "entityTypes must be array of strings");
+    }
+  }
+
+  if (entity !== undefined && typeof entity !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "entity must be a string");
+  }
+
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return {
+    mode: mode as 'smart' | 'entities' | 'relationships' | 'raw' | undefined,
+    limit: limit as number | undefined,
+    entityTypes: entityTypes as string[] | undefined,
+    entity: entity as string | undefined,
+    collection: collection as string | undefined
   };
 }
