@@ -1,8 +1,40 @@
 # Enhanced MCP-Qdrant-Memory for Claude Code Integration
 
-## Overview ✅ v2.4 PRODUCTION READY - VERIFIED & TESTED
+## Overview ✅ v2.5 PRODUCTION READY - MULTI-PROJECT SUPPORT
 
 This enhanced version of the MCP-Qdrant-Memory server provides enterprise-grade memory capabilities for Claude Code, featuring intelligent token management, smart filtering, and direct Qdrant integration for large-scale codebases.
+
+## v2.5 Multi-Project Support - ✅ NEW
+
+### 🚀 Dynamic Collection Parameter
+All MCP tools now accept an optional `collection` parameter to override the default collection:
+
+```typescript
+// Single project (unchanged - uses QDRANT_COLLECTION_NAME env var)
+search_similar({ query: "authentication" })
+
+// Multi-project (explicit collection override)
+search_similar({ query: "authentication", collection: "project-a" })
+search_similar({ query: "authentication", collection: "project-b" })
+
+// All tools support collection parameter:
+create_entities({ entities: [...], collection: "project-a" })
+create_relations({ relations: [...], collection: "project-b" })
+read_graph({ mode: "smart", collection: "project-a" })
+get_implementation({ entityName: "AuthService", collection: "project-b" })
+```
+
+### Benefits
+- **Simultaneous Projects**: Work with multiple indexed projects without conflicts
+- **Cross-Project Queries**: Query any collection from any MCP server instance
+- **Per-Collection BM25**: Each collection maintains its own keyword search index
+- **Backward Compatible**: Existing configurations work unchanged (falls back to env var)
+
+### Configuration
+No changes needed for single-project usage. For multi-project:
+1. Each project should use a unique collection name during indexing
+2. Pass `collection` parameter to target specific projects
+3. Optional: Set `QDRANT_COLLECTION_NAME` as default fallback
 
 ## v2.4 Progressive Disclosure Architecture - ✅ IMPLEMENTATION COMPLETE & VERIFIED
 
