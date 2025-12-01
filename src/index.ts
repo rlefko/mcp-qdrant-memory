@@ -231,6 +231,10 @@ class MemoryServer {
                   },
                   required: ["name", "entityType", "observations"]
                 }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["entities"]
@@ -253,6 +257,10 @@ class MemoryServer {
                   },
                   required: ["from", "to", "relationType"]
                 }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["relations"]
@@ -277,6 +285,10 @@ class MemoryServer {
                   },
                   required: ["entityName", "contents"]
                 }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["observations"]
@@ -291,6 +303,10 @@ class MemoryServer {
               entityNames: {
                 type: "array",
                 items: { type: "string" }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["entityNames"]
@@ -315,6 +331,10 @@ class MemoryServer {
                   },
                   required: ["entityName", "observations"]
                 }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["deletions"]
@@ -337,6 +357,10 @@ class MemoryServer {
                   },
                   required: ["from", "to", "relationType"]
                 }
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["relations"]
@@ -367,6 +391,10 @@ class MemoryServer {
                 type: "number",
                 description: "Max entities per type (default: 150)",
                 default: 150
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             }
           }
@@ -383,7 +411,7 @@ class MemoryServer {
                 items: { type: "string" },
                 description: "Filter by entity types: class, function, file, documentation, debugging_pattern, etc."
               },
-              limit: { 
+              limit: {
                 type: "number",
                 default: 20
               },
@@ -392,6 +420,10 @@ class MemoryServer {
                 enum: ["semantic", "keyword", "hybrid"],
                 description: "Search mode: semantic (dense vectors), keyword (sparse vectors), hybrid (combined). Defaults to hybrid.",
                 default: "hybrid"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["query"]
@@ -403,7 +435,7 @@ class MemoryServer {
           inputSchema: {
             type: "object",
             properties: {
-              entityName: { 
+              entityName: {
                 type: "string",
                 description: "Name of the entity to retrieve"
               },
@@ -412,6 +444,10 @@ class MemoryServer {
                 enum: ["minimal", "logical", "dependencies"],
                 default: "minimal",
                 description: "Scope of related code to include: minimal (entity only), logical (same-file helpers), dependencies (imports and calls)"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
               }
             },
             required: ["entityName"]
@@ -434,7 +470,7 @@ class MemoryServer {
         switch (request.params.name) {
           case "create_entities": {
             const args = validateCreateEntitiesRequest(request.params.arguments);
-            await this.graphManager.addEntities(args.entities);
+            await this.graphManager.addEntities(args.entities, args.collection);
             response = {
               content: [{ type: "text", text: "Entities created successfully" }],
             };
@@ -443,7 +479,7 @@ class MemoryServer {
 
           case "create_relations": {
             const args = validateCreateRelationsRequest(request.params.arguments);
-            await this.graphManager.addRelations(args.relations);
+            await this.graphManager.addRelations(args.relations, args.collection);
             return {
               content: [{ type: "text", text: "Relations created successfully" }],
             };
@@ -452,7 +488,7 @@ class MemoryServer {
           case "add_observations": {
             const args = validateAddObservationsRequest(request.params.arguments);
             for (const obs of args.observations) {
-              await this.graphManager.addObservations(obs.entityName, obs.contents);
+              await this.graphManager.addObservations(obs.entityName, obs.contents, args.collection);
             }
             return {
               content: [{ type: "text", text: "Observations added successfully" }],
@@ -461,7 +497,7 @@ class MemoryServer {
 
           case "delete_entities": {
             const args = validateDeleteEntitiesRequest(request.params.arguments);
-            await this.graphManager.deleteEntities(args.entityNames);
+            await this.graphManager.deleteEntities(args.entityNames, args.collection);
             return {
               content: [{ type: "text", text: "Entities deleted successfully" }],
             };
@@ -470,7 +506,7 @@ class MemoryServer {
           case "delete_observations": {
             const args = validateDeleteObservationsRequest(request.params.arguments);
             for (const del of args.deletions) {
-              await this.graphManager.deleteObservations(del.entityName, del.observations);
+              await this.graphManager.deleteObservations(del.entityName, del.observations, args.collection);
             }
             return {
               content: [{ type: "text", text: "Observations deleted successfully" }],
@@ -479,28 +515,26 @@ class MemoryServer {
 
           case "delete_relations": {
             const args = validateDeleteRelationsRequest(request.params.arguments);
-            await this.graphManager.deleteRelations(args.relations);
+            await this.graphManager.deleteRelations(args.relations, args.collection);
             return {
               content: [{ type: "text", text: "Relations deleted successfully" }],
             };
           }
 
           case "read_graph": {
-            const mode = (request.params.arguments?.mode as 'smart' | 'entities' | 'relationships' | 'raw') || 'smart';
-            const entityTypes = request.params.arguments?.entityTypes as string[] | undefined;
-            const entity = request.params.arguments?.entity as string | undefined;
-            const limit = (request.params.arguments?.limit as number) || 150;
-            
-            
+            const args = validateReadGraphRequest(request.params.arguments);
+            const mode = args.mode || 'smart';
+            const entityTypes = args.entityTypes;
+            const entity = args.entity;
+            const limit = args.limit || 150;
+            const collection = args.collection;
+
             // Handle entity-specific graph
             if (entity) {
-              const entityGraph = await this.graphManager.getEntitySpecificGraph(entity, mode, limit);
-              // Use full streaming response for entity-specific graphs to handle smart mode token management
-              const options: ScrollOptions = { mode, entityTypes, limit };
               // Auto-cut: Exponential backoff if response exceeds 25k tokens
               let finalResponse = await this.autoReduceResponse(
                 async (tryLimit: number) => {
-                  const entityGraph = await this.graphManager.getEntitySpecificGraph(entity, mode, tryLimit);
+                  const entityGraph = await this.graphManager.getEntitySpecificGraph(entity, mode, tryLimit, collection);
                   const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
                   return await streamingResponseBuilder.buildStreamingResponse(
                     entityGraph.entities || [],
@@ -510,9 +544,9 @@ class MemoryServer {
                 },
                 limit
               );
-              
+
               const fullResponse = JSON.stringify(finalResponse);
-              
+
               return {
                 content: [
                   {
@@ -522,18 +556,18 @@ class MemoryServer {
                 ],
               };
             }
-            
+
             // Handle general graph (existing logic)
             const options: ScrollOptions = {
               mode,
               entityTypes,
               limit
             };
-            
+
             // Auto-cut: Exponential backoff if response exceeds 25k tokens
             const finalResponse = await this.autoReduceResponse(
               async (tryLimit: number) => {
-                const rawGraph = await this.graphManager.getRawGraph(tryLimit, entityTypes, mode);
+                const rawGraph = await this.graphManager.getRawGraph(tryLimit, entityTypes, mode, collection);
                 const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
                 return await streamingResponseBuilder.buildStreamingResponse(
                   rawGraph.entities,
@@ -543,9 +577,9 @@ class MemoryServer {
               },
               limit
             );
-            
+
             const fullResponse = JSON.stringify(finalResponse);
-            
+
             return {
               content: [
                 {
@@ -558,7 +592,7 @@ class MemoryServer {
 
           case "search_similar": {
             const args = validateSearchSimilarRequest(request.params.arguments);
-            
+
             // Auto-reduce if response exceeds token limits
             const finalResponse = await this.autoReduceResponse(
               async (tryLimit: number) => {
@@ -566,13 +600,14 @@ class MemoryServer {
                   args.query,
                   args.entityTypes,
                   tryLimit,
-                  args.searchMode || 'semantic'
+                  args.searchMode || 'semantic',
+                  args.collection
                 );
                 return await streamingResponseBuilder.buildGenericStreamingResponse(results, TOKEN_CONFIG.DEFAULT_TOKEN_LIMIT);
               },
               args.limit || 20
             );
-            
+
             return {
               content: [
                 {
@@ -585,7 +620,7 @@ class MemoryServer {
 
           case "get_implementation": {
             const args = validateGetImplementationRequest(request.params.arguments);
-            
+
             // Auto-reduce if response exceeds token limits
             // Start with actual scope limits from Qdrant persistence
             const scopeLimits = {
@@ -594,16 +629,16 @@ class MemoryServer {
               'dependencies': 20  // From memory: dependencies scope limit
             };
             const initialLimit = scopeLimits[args.scope || 'minimal'];
-            
+
             const finalResponse = await this.autoReduceResponse(
               async (tryLimit: number) => {
                 // Need to pass the limit through to the implementation
-                const results = await this.graphManager.getImplementation(args.entityName, args.scope, tryLimit);
+                const results = await this.graphManager.getImplementation(args.entityName, args.scope, tryLimit, args.collection);
                 return await streamingResponseBuilder.buildGenericStreamingResponse(results);
               },
               initialLimit
             );
-            
+
             return {
               content: [
                 {
