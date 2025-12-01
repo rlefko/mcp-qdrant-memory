@@ -11,10 +11,21 @@ if (!QDRANT_URL) {
   process.exit(1);
 }
 
-const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME;
-if (!COLLECTION_NAME) {
-  console.error("Error: QDRANT_COLLECTION_NAME environment variable is required");
-  process.exit(1);
+const COLLECTION_NAME = process.env.QDRANT_COLLECTION_NAME || null;
+// Note: COLLECTION_NAME is now optional at startup - can be provided per-request
+
+/**
+ * Resolve collection name with optional override for multi-project support.
+ * Falls back to QDRANT_COLLECTION_NAME env var when no override provided.
+ */
+export function getCollectionName(override?: string): string {
+  if (override?.trim()) {
+    return override.trim();
+  }
+  if (!COLLECTION_NAME) {
+    throw new Error("No collection specified and QDRANT_COLLECTION_NAME environment variable is not set");
+  }
+  return COLLECTION_NAME;
 }
 
 const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
