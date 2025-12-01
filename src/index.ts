@@ -32,6 +32,7 @@ import {
   validateDeleteRelationsRequest,
   validateSearchSimilarRequest,
   validateGetImplementationRequest,
+  validateReadGraphRequest,
 } from './validation.js';
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
@@ -48,12 +49,12 @@ class KnowledgeGraphManager {
     });
   }
 
-  async initialize(): Promise<void> {
+  async initialize(collection?: string): Promise<void> {
     // Initialize Qdrant - it's the sole source of truth
-    await this.qdrant.initialize();
-    
+    await this.qdrant.initialize(collection);
+
     // Initialize BM25 index with existing documents using qdrant.ts implementation
-    await this.qdrant.initializeBM25Index();
+    await this.qdrant.initializeBM25Index(collection);
   }
 
 
@@ -61,18 +62,18 @@ class KnowledgeGraphManager {
   //   await fs.writeFile(MEMORY_FILE_PATH, JSON.stringify(this.graph, null, 2));
   // } // Removed: JSON file writing disabled
 
-  async addEntities(entities: Entity[]): Promise<void> {
+  async addEntities(entities: Entity[], collection?: string): Promise<void> {
     for (const entity of entities) {
       // Since we're using Qdrant as the sole source of truth, just persist
-      await this.qdrant.persistEntity(entity);
+      await this.qdrant.persistEntity(entity, collection);
     }
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async addRelations(relations: Relation[]): Promise<void> {
+  async addRelations(relations: Relation[], collection?: string): Promise<void> {
     // Load current entities from Qdrant for validation with unlimited limit
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER);
-    
+    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+
     for (const relation of relations) {
       if (!currentGraph.entities.some(e => e.name === relation.from)) {
         throw new Error(`Entity not found: ${relation.from}`);
@@ -80,67 +81,67 @@ class KnowledgeGraphManager {
       if (!currentGraph.entities.some(e => e.name === relation.to)) {
         throw new Error(`Entity not found: ${relation.to}`);
       }
-      
+
       // Since we're using Qdrant as the sole source of truth, just persist
-      await this.qdrant.persistRelation(relation);
+      await this.qdrant.persistRelation(relation, collection);
     }
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async addObservations(entityName: string, observations: string[]): Promise<void> {
+  async addObservations(entityName: string, observations: string[], collection?: string): Promise<void> {
     // Load current entities from Qdrant with unlimited limit for entity lookups
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER);
+    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
     const entity = currentGraph.entities.find((e: Entity) => e.name === entityName);
     if (!entity) {
       throw new Error(`Entity not found: ${entityName}`);
     }
     (entity.observations || []).push(...observations);
-    await this.qdrant.persistEntity(entity);
+    await this.qdrant.persistEntity(entity, collection);
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async deleteEntities(entityNames: string[]): Promise<void> {
+  async deleteEntities(entityNames: string[], collection?: string): Promise<void> {
     // Load current graph to find related relations with unlimited limit
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER);
-    
+    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+
     for (const name of entityNames) {
       // Delete the entity
-      await this.qdrant.deleteEntity(name);
-      
+      await this.qdrant.deleteEntity(name, collection);
+
       // Delete all relations involving this entity
       const relatedRelations = currentGraph.relations.filter(
         (r: Relation) => r.from === name || r.to === name
       );
       for (const relation of relatedRelations) {
-        await this.qdrant.deleteRelation(relation);
+        await this.qdrant.deleteRelation(relation, collection);
       }
     }
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async deleteObservations(entityName: string, observations: string[]): Promise<void> {
+  async deleteObservations(entityName: string, observations: string[], collection?: string): Promise<void> {
     // Load current entities from Qdrant with unlimited limit for entity lookups
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER);
+    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
     const entity = currentGraph.entities.find((e: Entity) => e.name === entityName);
     if (!entity) {
       throw new Error(`Entity not found: ${entityName}`);
     }
     entity.observations = (entity.observations || []).filter((o: string) => !observations.includes(o));
-    await this.qdrant.persistEntity(entity);
+    await this.qdrant.persistEntity(entity, collection);
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async deleteRelations(relations: Relation[]): Promise<void> {
+  async deleteRelations(relations: Relation[], collection?: string): Promise<void> {
     for (const relation of relations) {
       // Since we're using Qdrant as the sole source of truth, just delete
-      await this.qdrant.deleteRelation(relation);
+      await this.qdrant.deleteRelation(relation, collection);
     }
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async getGraph(options?: ScrollOptions): Promise<KnowledgeGraph | SmartGraph> {
+  async getGraph(options?: ScrollOptions, collection?: string): Promise<KnowledgeGraph | SmartGraph> {
     try {
-      return await this.qdrant.scrollAll(options);
+      return await this.qdrant.scrollAll(options, collection);
     } catch (error) {
       console.error('Failed to read from Qdrant:', error);
       // Return empty graph on error
@@ -148,10 +149,10 @@ class KnowledgeGraphManager {
     }
   }
 
-  async getRawGraph(limit?: number, entityTypes?: string[], mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'raw'): Promise<KnowledgeGraph> {
+  async getRawGraph(limit?: number, entityTypes?: string[], mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'raw', collection?: string): Promise<KnowledgeGraph> {
     try {
       // Get limited raw entities and relations from Qdrant for streaming processing
-      const rawData = await this.qdrant.scrollAll({ mode, limit, entityTypes });
+      const rawData = await this.qdrant.scrollAll({ mode, limit, entityTypes }, collection);
       if ('entities' in rawData && 'relations' in rawData) {
         return rawData as KnowledgeGraph;
       }
@@ -163,18 +164,18 @@ class KnowledgeGraphManager {
     }
   }
 
-  async searchSimilar(query: string, entityTypes?: string[], limit: number = 20, searchMode: 'semantic' | 'keyword' | 'hybrid' = 'semantic'): Promise<SearchResult[]> {
+  async searchSimilar(query: string, entityTypes?: string[], limit: number = 20, searchMode: 'semantic' | 'keyword' | 'hybrid' = 'semantic', collection?: string): Promise<SearchResult[]> {
     // Ensure limit is a positive number, no hard cap
     const validLimit = Math.max(1, limit);
-    return await this.qdrant.searchSimilar(query, entityTypes, validLimit, searchMode);
+    return await this.qdrant.searchSimilar(query, entityTypes, validLimit, searchMode, collection);
   }
 
-  async getImplementation(entityName: string, scope: 'minimal' | 'logical' | 'dependencies' = 'minimal', limit?: number): Promise<SearchResult[]> {
-    return await this.qdrant.getImplementationChunks(entityName, scope, limit);
+  async getImplementation(entityName: string, scope: 'minimal' | 'logical' | 'dependencies' = 'minimal', limit?: number, collection?: string): Promise<SearchResult[]> {
+    return await this.qdrant.getImplementationChunks(entityName, scope, limit, collection);
   }
 
-  async getEntitySpecificGraph(entityName: string, mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'smart', limit?: number): Promise<any> {
-    return await this.qdrant.getEntitySpecificGraph(entityName, mode, limit);
+  async getEntitySpecificGraph(entityName: string, mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'smart', limit?: number, collection?: string): Promise<any> {
+    return await this.qdrant.getEntitySpecificGraph(entityName, mode, limit, collection);
   }
 }
 
