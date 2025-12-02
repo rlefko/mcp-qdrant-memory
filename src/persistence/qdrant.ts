@@ -91,6 +91,15 @@ export class QdrantPersistence {
   private bm25Initialized: Map<string, boolean> = new Map();
   private bm25InitializationPromises: Map<string, Promise<void>> = new Map();
 
+  // Query embedding cache for 300-500ms savings per repeated query
+  private queryEmbeddingCache: Map<string, { embedding: number[]; timestamp: number }> = new Map();
+  private readonly QUERY_CACHE_MAX_SIZE = 500;
+  private readonly QUERY_CACHE_TTL_MS = 3600000; // 1 hour TTL
+
+  // Cache statistics
+  private cacheHits = 0;
+  private cacheMisses = 0;
+
   constructor() {
     if (!QDRANT_URL) {
       throw new Error("QDRANT_URL environment variable is required");
@@ -255,14 +264,67 @@ export class QdrantPersistence {
     }
   }
 
-  private async generateEmbedding(text: string) {
-    const provider = process.env.EMBEDDING_PROVIDER?.toLowerCase();
-    
-    if (provider === 'voyage') {
-      return this.generateVoyageEmbedding(text);
-    } else {
-      return this.generateOpenAIEmbedding(text);
+  private hashText(text: string): string {
+    // Fast hash for cache key using first 16 chars of SHA256
+    return crypto.createHash('sha256').update(text).digest('hex').substring(0, 16);
+  }
+
+  private async generateEmbedding(text: string): Promise<number[]> {
+    const cacheKey = this.hashText(text);
+    const now = Date.now();
+
+    // Check cache first
+    const cached = this.queryEmbeddingCache.get(cacheKey);
+    if (cached && (now - cached.timestamp) < this.QUERY_CACHE_TTL_MS) {
+      this.cacheHits++;
+      return cached.embedding;
     }
+
+    this.cacheMisses++;
+
+    // Generate embedding via API
+    const provider = process.env.EMBEDDING_PROVIDER?.toLowerCase();
+    const embedding = provider === 'voyage'
+      ? await this.generateVoyageEmbedding(text)
+      : await this.generateOpenAIEmbedding(text);
+
+    // Cache the result
+    this.addToCache(cacheKey, embedding);
+
+    return embedding;
+  }
+
+  private addToCache(key: string, embedding: number[]): void {
+    // Evict old entries if cache is full
+    if (this.queryEmbeddingCache.size >= this.QUERY_CACHE_MAX_SIZE) {
+      this.evictOldestEntries();
+    }
+
+    this.queryEmbeddingCache.set(key, {
+      embedding,
+      timestamp: Date.now()
+    });
+  }
+
+  private evictOldestEntries(): void {
+    // Remove oldest 25% of entries
+    const entriesToRemove = Math.ceil(this.QUERY_CACHE_MAX_SIZE * 0.25);
+    const entries = Array.from(this.queryEmbeddingCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+    for (let i = 0; i < entriesToRemove && i < entries.length; i++) {
+      this.queryEmbeddingCache.delete(entries[i][0]);
+    }
+  }
+
+  getCacheStats(): { hits: number; misses: number; size: number; hitRatio: number } {
+    const total = this.cacheHits + this.cacheMisses;
+    return {
+      hits: this.cacheHits,
+      misses: this.cacheMisses,
+      size: this.queryEmbeddingCache.size,
+      hitRatio: total > 0 ? this.cacheHits / total : 0
+    };
   }
 
   private async generateOpenAIEmbedding(text: string) {
@@ -355,7 +417,7 @@ export class QdrantPersistence {
       };
 
       await this.client.upsert(col, {
-        wait: true,
+        wait: false,
         points: [
           {
             id,
@@ -397,7 +459,7 @@ export class QdrantPersistence {
     };
 
     await this.client.upsert(col, {
-      wait: true,
+      wait: false,
       points: [
         {
           id,
