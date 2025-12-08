@@ -1,413 +1,312 @@
-# MCP Memory Server with Qdrant Persistence (Enhanced for Claude Code)
+# MCP Memory Server with Qdrant
+
+> **v2.8** | Semantic code memory for Claude Code via Model Context Protocol
+
 [![smithery badge](https://smithery.ai/badge/@delorenj/mcp-qdrant-memory)](https://smithery.ai/server/@delorenj/mcp-qdrant-memory)
 
-This MCP server provides a knowledge graph implementation with semantic search capabilities powered by Qdrant vector database. **Enhanced version** with direct Qdrant integration for Claude Code memory solution.
+This MCP server provides a knowledge graph implementation with semantic search capabilities powered by Qdrant vector database. **Enhanced version** for Claude Code memory solution.
 
-## 🎯 Latest Enhancements - v2.4 Production Ready ✅
+---
 
-- **🚀 Auto-Reduce Token Management**: Exponential backoff with 0.7 reduction factor (10 max attempts)  
-- **🎯 25k Token Compliance**: Intelligent token limiting with 96% safety margin for maximum utilization
-- **⚡ Progressive Disclosure**: `search_similar` returns metadata-first for 90% faster queries
-- **🎯 Entity-Specific Filtering**: NEW `entity` parameter focuses on individual components (10-20 relations vs 300+)
-- **🧠 Smart Entity Analysis**: AI-powered summaries with connection stats and relationship breakdowns  
-- **🔧 4 Targeted Modes**: smart (AI overview), entities (connections), relationships (relations only), raw (complete)
-- **⚡ Laser-Focused Debugging**: Eliminate information overload with precise entity-centered queries
-- **🛡️ Error Handling**: Clear feedback for non-existent entities with helpful error messages
-- **🎯 Semantic Scope Implementation**: `get_implementation(entityName, scope?)` with contextual code retrieval
-  - **`minimal`**: Just the entity implementation (default, backward compatible)
-  - **`logical`**: Entity + helper functions/classes from same file (analyzes calls + `_` prefixed helpers)
-  - **`dependencies`**: Entity + imported modules and called functions (cross-file relationships)
-- **🧠 Smart Metadata Usage**: Leverages structured semantic metadata from indexing process
-- **⚡ Performance Optimized**: Configurable limits (20 logical, 30 dependencies) with smart deduplication
-- **🎯 Automatic Provider Detection**: Reads embedding provider from environment variables
-- **🚀 Voyage AI Integration**: Built-in support for voyage-3-lite with cost optimization
-- **🛡️ Backward Compatibility**: Seamlessly handles both v2.3 and v2.4 chunk formats, plus general graph calls
-- **📊 Structured Responses**: Summary, API surface, dependencies, and file structure
-- **🔄 Direct Qdrant Integration**: Works seamlessly with claude-indexer direct writes
-- **📈 Large Collection Support**: Handles 2000+ vectors efficiently via scroll API
-- **🔧 Streaming Response Builder**: Progressive content building with section priorities and token enforcement
-- **📏 Industry-Standard Token Counting**: Character-based approximation (chars/4) with intelligent truncation
+## Architecture
+
+```mermaid
+graph LR
+    CC[Claude Code] <-->|MCP Protocol| MCP[MCP Server]
+    MCP <-->|Vector Search| Q[(Qdrant)]
+    MCP <-->|Embeddings| V[Voyage AI]
+
+    subgraph Search Modes
+        H[Hybrid<br/>70% semantic + 30% BM25]
+        S[Semantic<br/>Vector similarity]
+        K[Keyword<br/>BM25 exact match]
+    end
+```
+
+---
 
 ## Features
 
-- Graph-based knowledge representation with entities and relations
-- **Dual persistence**: Qdrant vector database + JSON file fallback
-- Semantic search using Qdrant vector database
-- OpenAI embeddings for semantic similarity
-- HTTPS support with reverse proxy compatibility
-- Docker support for easy deployment
-- **Enhanced read_graph**: Direct database reads with automatic fallback
+| Feature | Description |
+|---------|-------------|
+| **Hybrid Search** | BM25 + semantic search with RRF fusion |
+| **Progressive Disclosure** | Metadata-first responses, details on-demand |
+| **Multi-Collection** | Work with multiple projects simultaneously |
+| **Token Management** | 25k token compliance with auto-reduction |
+| **Entity-Specific Filtering** | Focus on individual components |
 
-## Environment Variables
+---
 
-The following environment variables are required:
+## Quick Start
 
-```bash
-# Embedding Provider Configuration (v2.4)
-# OpenAI API key (default provider)
-OPENAI_API_KEY=your-openai-api-key
+### 1. Install Dependencies
 
-# Voyage AI API key (recommended - 85% cost reduction)
-VOYAGE_API_KEY=your-voyage-key
-EMBEDDING_PROVIDER=voyage
-EMBEDDING_MODEL=voyage-3-lite
-
-# Qdrant server URL (supports both HTTP and HTTPS)
-QDRANT_URL=https://your-qdrant-server
-
-# Qdrant API key (if authentication is enabled)
-QDRANT_API_KEY=your-qdrant-api-key
-
-# Name of the Qdrant collection to use
-QDRANT_COLLECTION_NAME=your-collection-name
-```
-
-## Setup
-
-### Local Setup
-
-1. Install dependencies:
 ```bash
 npm install
 ```
 
-2. Build the server:
+### 2. Build the Server
+
 ```bash
 npm run build
 ```
 
-### Docker Setup
+### 3. Configure Environment
 
-1. Build the Docker image:
 ```bash
-docker build -t mcp-qdrant-memory .
+# Required
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION_NAME=your-collection
+
+# Embeddings (choose one)
+VOYAGE_API_KEY=your-voyage-key        # Recommended (85% cost savings)
+EMBEDDING_PROVIDER=voyage
+EMBEDDING_MODEL=voyage-3-lite
+
+# OR
+OPENAI_API_KEY=your-openai-key        # Alternative
 ```
 
-2. Run the Docker container with required environment variables:
-```bash
-docker run -d \
-  -e OPENAI_API_KEY=your-openai-api-key \
-  -e QDRANT_URL=http://your-qdrant-server:6333 \
-  -e QDRANT_COLLECTION_NAME=your-collection-name \
-  -e QDRANT_API_KEY=your-qdrant-api-key \
-  --name mcp-qdrant-memory \
-  mcp-qdrant-memory
-```
+### 4. Add to Claude Code
 
-### Add to MCP settings:
+Add to your `.mcp.json`:
+
 ```json
 {
   "mcpServers": {
-    "memory": {
-      "command": "/bin/zsh",
-      "args": ["-c", "cd /path/to/server && node dist/index.js"],
+    "your-project-memory": {
+      "command": "node",
+      "args": ["/path/to/mcp-qdrant-memory/dist/index.js"],
       "env": {
-        "OPENAI_API_KEY": "your-openai-api-key",
-        "QDRANT_API_KEY": "your-qdrant-api-key",
-        "QDRANT_URL": "http://your-qdrant-server:6333",
-        "QDRANT_COLLECTION_NAME": "your-collection-name"
-      },
-      "alwaysAllow": [
-        "create_entities",
-        "create_relations",
-        "add_observations",
-        "delete_entities",
-        "delete_observations",
-        "delete_relations",
-        "read_graph",
-        "search_similar",
-        "get_implementation"
-      ]
+        "VOYAGE_API_KEY": "your-key",
+        "QDRANT_URL": "http://localhost:6333",
+        "QDRANT_COLLECTION_NAME": "your-collection"
+      }
     }
   }
 }
 ```
 
-## Tools
+---
+
+## MCP Tools
+
+### search_similar
+
+Semantic search with hybrid BM25 support.
+
+```typescript
+search_similar({
+  query: string,           // Search query
+  entityTypes?: string[],  // Filter: ["function", "class", "metadata", "implementation"]
+  limit?: number,          // Max results (default: 50)
+  searchMode?: string      // "hybrid" | "semantic" | "keyword"
+})
+```
+
+**Search Modes:**
+
+| Mode | Best For | Score Range |
+|------|----------|-------------|
+| `hybrid` (default) | General queries | 0.4-1.2 |
+| `semantic` | Conceptual searches | 0.6-0.8 |
+| `keyword` | Exact identifiers | 1.5+ |
+
+**Examples:**
+
+```python
+# Find authentication code
+mcp__project__search_similar("user authentication", limit=10)
+
+# Fast metadata scan
+mcp__project__search_similar("auth", entityTypes=["metadata"])
+
+# Exact function name
+mcp__project__search_similar("validateToken", searchMode="keyword")
+```
+
+---
+
+### read_graph
+
+Read knowledge graph with multiple viewing modes.
+
+```typescript
+read_graph({
+  entity?: string,         // Focus on specific entity
+  mode?: string,           // "smart" | "entities" | "relationships" | "raw"
+  entityTypes?: string[],  // Filter entity types
+  limit?: number           // Max entities per type
+})
+```
+
+**Modes:**
+
+| Mode | Description | Token Usage |
+|------|-------------|-------------|
+| `smart` | AI-optimized summary | <25k |
+| `entities` | Entity list only | ~10k |
+| `relationships` | Relations only | ~5k |
+| `raw` | Complete data | May exceed limits |
+
+**Examples:**
+
+```python
+# Entity-specific analysis
+mcp__project__read_graph(entity="AuthService", mode="smart")
+
+# See function relationships
+mcp__project__read_graph(entity="process_login", mode="relationships")
+
+# Get all classes
+mcp__project__read_graph(mode="entities", entityTypes=["class"])
+```
+
+---
+
+### get_implementation
+
+Retrieve implementation details with scope control.
+
+```typescript
+get_implementation({
+  entityName: string,      // Entity to retrieve
+  scope?: string           // "minimal" | "logical" | "dependencies"
+})
+```
+
+**Scopes:**
+
+| Scope | Returns | Token Usage |
+|-------|---------|-------------|
+| `minimal` | Just the entity | ~500-2k |
+| `logical` | Entity + same-file helpers | ~2k-5k |
+| `dependencies` | Entity + imported modules | ~5k-15k |
+
+**Examples:**
+
+```python
+# Get just the function
+mcp__project__get_implementation("parseAST")
+
+# Get with local helpers
+mcp__project__get_implementation("parseAST", scope="logical")
+
+# Get with all dependencies
+mcp__project__get_implementation("parseAST", scope="dependencies")
+```
+
+---
 
 ### Entity Management
-- `create_entities`: Create multiple new entities with observations array
-- `create_relations`: Create relations between entities  
-- `add_observations`: Add observation strings to existing entities (stored as string array)
-- `delete_entities`: Delete entities and their relations
-- `delete_observations`: Delete specific observations from entities
-- `delete_relations`: Delete specific relations
-- `read_graph`: **Enhanced** - Get smart, filtered knowledge graph with NEW entity-specific filtering
 
-### Progressive Disclosure Search (v2.4) with BM25 Hybrid Search
-- `search_similar`: **Enhanced** - BM25 hybrid search by default with metadata-first approach for optimal code discovery
-  ```typescript
-  interface SearchParams {
-    query: string;           // Search query text
-    entityTypes?: string[];  // Unified filtering: entity types (class, function, documentation, text_chunk) + chunk types (metadata, implementation)
-    limit?: number;          // Max results (default: 50)
-    searchMode?: string;     // Search mode: "semantic", "keyword", "hybrid" (default: "hybrid")
-  }
-  
-  // Search Modes (OkapiBM25 algorithm implementation):
-  // "semantic": Dense vector search for conceptual understanding (0.6-0.8 scores)
-  // "keyword": BM25 sparse vector search for exact term matching (1.5+ scores)  
-  // "hybrid": RRF fusion 70% semantic + 30% BM25 for balanced results (0.4-1.2 scores)
-  
-  // Unified entityTypes parameter supports:
-  // Entity Types: ["class", "function", "documentation", "text_chunk"]
-  // Chunk Types: ["metadata", "implementation"]  
-  // Mixed Arrays: ["function", "metadata", "implementation"] (OR logic)
-  ```
+```typescript
+// Create entities
+create_entities({
+  entities: [{
+    name: string,
+    entityType: string,
+    observations: string[]
+  }]
+})
 
-**Search Mode Examples:**
-```python
-# Semantic search - best for conceptual queries
-mcp__your_collection__search_similar("authentication functions", [], 10, "semantic")
+// Add observations to existing entity
+add_observations({
+  observations: [{
+    entityName: string,
+    contents: string[]
+  }]
+})
 
-# BM25 keyword search - best for exact terms
-mcp__your_collection__search_similar("JWT validateToken", [], 10, "keyword") 
+// Delete entities
+delete_entities({ entityNames: string[] })
 
-# Hybrid search - balanced approach (default)
-mcp__your_collection__search_similar("user login validation", [], 10, "hybrid")
+// Create relations
+create_relations({
+  relations: [{
+    from: string,
+    to: string,
+    relationType: string
+  }]
+})
 ```
 
-- `get_implementation`: **ENHANCED** - Semantic scope implementation access (v2.4.1)
-  ```typescript
-  interface ImplementationParams {
-    entityName: string;              // Name of entity to get implementation details for
-    scope?: 'minimal' | 'logical' | 'dependencies';  // Scope of related code (default: 'minimal')
-  }
-  ```
-  
-  **Scope Types:**
-  - **`minimal`** (default): Returns only the requested entity's implementation
-  - **`logical`**: Returns entity + helper functions/classes from same file (analyzes calls + `_` prefixed helpers)
-  - **`dependencies`**: Returns entity + imported modules and called functions (cross-file relationships)
-  
-  **Usage Examples:**
-  ```python
-  # Get just the parseAST function implementation
-  mcp__your_collection__get_implementation("parseAST")
-  
-  # Get parseAST + its same-file helpers (_extract_nodes, _validate_syntax)
-  mcp__your_collection__get_implementation("parseAST", "logical")
-  
-  # Get parseAST + external dependencies (TreeSitter.parse, ast.walk, etc.)
-  mcp__your_collection__get_implementation("parseAST", "dependencies")
-  ```
+---
 
-## Implementation Details
+## Multi-Project Support
 
-The server maintains enhanced dual storage with Qdrant as primary:
+All tools accept an optional `collection` parameter:
 
-1. **Qdrant Vector DB (Primary)**:
-   - Semantic embeddings of entities and relations
-   - Complete knowledge graph storage
-   - **Enhanced read_graph**: Direct database reads via scroll API
-   - Handles large collections (2000+ vectors) efficiently
+```python
+# Default collection (from env)
+mcp__memory__search_similar("auth")
 
-2. **File-based (memory.json - Fallback)**:
-   - Local knowledge graph cache
-   - Fast fallback when Qdrant unavailable
-   - Maintains backward compatibility
+# Explicit collection
+mcp__memory__search_similar("auth", collection="project-a")
+mcp__memory__search_similar("auth", collection="project-b")
+```
 
-### ✨ Enhanced Synchronization
+---
 
-**Direct Qdrant Mode** (claude-indexer integration):
-1. Entities written directly to Qdrant
-2. **read_graph** reads from Qdrant database
-3. JSON file may be empty (fallback only)
-4. Supports large-scale knowledge graphs
+## Smart Mode Response
 
-**Traditional MCP Mode**:
-1. Changes written to memory.json
-2. Embeddings generated using OpenAI
-3. Vectors stored in Qdrant
-4. Both storage systems remain consistent
+The `smart` mode returns a structured, token-optimized response:
 
-### Search Process
-
-When searching:
-1. Query text is converted to embedding
-2. Qdrant performs similarity search
-3. Results include both entities and relations
-4. Results are ranked by semantic similarity
-
-## Observations Array Format
-
-**Entity Storage Structure:**
 ```typescript
-interface Entity {
-  name: string;
-  entityType: string; 
-  observations: string[];  // Array of observation strings
-}
-
-// Example in Qdrant payload:
 {
-  type: "chunk",
-  chunk_type: "metadata",
-  entity_name: "AuthService",
-  entity_type: "class", 
-  observations: [
-    "Handles user authentication",
-    "Manages JWT tokens",
-    "Integrates with OAuth providers"
-  ],
-  content: "Handles user authentication. Manages JWT tokens. Integrates with OAuth providers"
-}
-```
-
-**Usage in All Modes:**
-- **search_similar**: Returns `observations` field in results
-- **read_graph (entities/raw)**: Shows full `observations` array
-- **read_graph (smart)**: Includes observations in API surface functions/classes
-
-## Example Usage
-
-```python
-# Entity-specific graph filtering (NEW v2.7)
-mcp__your_collection__read_graph(entity="AuthService", mode="smart")
-# Returns: AI-powered summary with connection stats and relationship breakdown
-
-# Debug specific function relationships
-mcp__your_collection__read_graph(entity="process_login", mode="relationships")
-# Returns: 10-20 focused relations instead of 300+ scattered ones
-
-# Find entities connected to specific component
-mcp__your_collection__read_graph(entity="validate_token", mode="entities")
-
-# General graph views (backward compatible)
-mcp__your_collection__read_graph(mode="smart", limit=20)
-# AI-optimized view with max 20 entities per type
-
-# Entity type filtering
-mcp__your_collection__read_graph(mode="entities", entityTypes=["class", "function"], limit=10)
-
-# Unified entityTypes filtering - entity types only
-mcp__your_collection__search_similar("development tasks", ["function", "class"], 5)
-# Filter by specific entity types
-
-# Unified entityTypes filtering - chunk types only  
-mcp__your_collection__search_similar("authentication", ["metadata"], 10)
-# Fast metadata-only search
-
-# Unified entityTypes filtering - mixed types (OR logic)
-mcp__your_collection__search_similar("authentication", ["function", "metadata", "implementation"], 10)
-# Returns functions OR metadata OR implementation chunks
-
-# Search without filtering (returns all entity and chunk types)
-mcp__your_collection__search_similar("authentication", [], 10)
-```
-
-### 🎯 Smart Mode Features
-
-The enhanced `read_graph` with `mode: "smart"` provides:
-
-```typescript
-interface SmartGraphResponse {
   summary: {
-    totalEntities: number;
-    totalRelations: number;
-    breakdown: Record<string, number>; // Entity type counts
-    keyModules: string[];              // Top-level packages/modules
-    timestamp: string;
-  };
+    totalEntities: number,
+    totalRelations: number,
+    breakdown: { class: 195, function: 292, ... },
+    keyModules: ["storage", "analysis", "embeddings"]
+  },
   apiSurface: {
-    classes: Array<{
-      name: string;
-      file: string;
-      line: number;
-      docstring?: string;
-      methods: string[];
-      inherits?: string[];
-    }>;
-    functions: Array<{
-      name: string;
-      file: string;
-      line: number;
-      signature?: string;
-      docstring?: string;
-    }>;
-  };
+    classes: [{ name, file, line, docstring, methods }],
+    functions: [{ name, file, line, signature, docstring }]
+  },
   dependencies: {
-    external: string[];                // External packages
-    internal: Array<{from: string, to: string}>; // Key internal deps
-  };
-  relations: {
-    inheritance: Array<{from: string, to: string}>;
-    keyUsages: Array<{from: string, to: string, type: string}>;
-  };
+    external: ["openai", "qdrant"],
+    internal: [{ from, to }]
+  }
 }
 ```
 
-**Benefits:**
-- ✅ **Token Compliant**: Always <25k tokens (vs 393k raw)
-- ✅ **Prioritized Content**: Public APIs and documented code first  
-- ✅ **Structured Insights**: Summary, dependencies, relationships
-- ✅ **Performance**: Sub-second response times with large collections
+---
 
-## HTTPS and Reverse Proxy Configuration
+## Docker Setup
 
-The server supports connecting to Qdrant through HTTPS and reverse proxies. This is particularly useful when:
-- Running Qdrant behind a reverse proxy like Nginx or Apache
-- Using self-signed certificates
-- Requiring custom SSL/TLS configurations
-
-### Setting up with a Reverse Proxy
-
-1. Configure your reverse proxy (example using Nginx):
-```nginx
-server {
-    listen 443 ssl;
-    server_name qdrant.yourdomain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:6333;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-2. Update your environment variables:
 ```bash
-QDRANT_URL=https://qdrant.yourdomain.com
+# Build
+docker build -t mcp-qdrant-memory .
+
+# Run
+docker run -d \
+  -e VOYAGE_API_KEY=your-key \
+  -e QDRANT_URL=http://qdrant:6333 \
+  -e QDRANT_COLLECTION_NAME=your-collection \
+  mcp-qdrant-memory
 ```
 
-### Security Considerations
+---
 
-The server implements robust HTTPS handling with:
-- Custom SSL/TLS configuration
-- Proper certificate verification options
-- Connection pooling and keepalive
-- Automatic retry with exponential backoff
-- Configurable timeouts
+## Performance
 
-### Troubleshooting HTTPS Connections
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| Metadata search | 3-5ms | Fast scanning |
+| Hybrid search | 30-50ms | Full search |
+| Smart graph | 100-200ms | Token-optimized |
+| Implementation | 50-100ms | Depends on scope |
 
-If you experience connection issues:
+---
 
-1. Verify your certificates:
-```bash
-openssl s_client -connect qdrant.yourdomain.com:443
-```
+## Related Documentation
 
-2. Test direct connectivity:
-```bash
-curl -v https://qdrant.yourdomain.com/collections
-```
+- [Architecture](../ARCHITECTURE.md) - System design
+- [CLI Reference](../docs/CLI_REFERENCE.md) - Indexer commands
+- [Hooks System](../docs/HOOKS.md) - Claude Code integration
 
-3. Check for any proxy settings:
-```bash
-env | grep -i proxy
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+---
 
 ## License
 
