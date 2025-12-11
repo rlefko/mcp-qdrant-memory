@@ -10,6 +10,7 @@ import {
 } from "../config.js";
 import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
+import { ClaudeIgnoreFilter, createFilterFromEnv } from "../claudeignore/index.js";
 
 // Create custom Qdrant client that adds auth header
 class CustomQdrantClient extends QdrantClient {
@@ -91,6 +92,9 @@ export class QdrantPersistence {
   private bm25Initialized: Map<string, boolean> = new Map();
   private bm25InitializationPromises: Map<string, Promise<void>> = new Map();
 
+  // ClaudeIgnore filter for file path filtering
+  private ignoreFilter: ClaudeIgnoreFilter | null = null;
+
   // Query embedding cache for 300-500ms savings per repeated query
   private queryEmbeddingCache: Map<string, { embedding: number[]; timestamp: number }> = new Map();
   private readonly QUERY_CACHE_MAX_SIZE = 500;
@@ -118,6 +122,15 @@ export class QdrantPersistence {
     this.openai = new OpenAI({
       apiKey: OPENAI_API_KEY,
     });
+
+    // Initialize ClaudeIgnore filter if PROJECT_PATH is set
+    this.ignoreFilter = createFilterFromEnv();
+    if (this.ignoreFilter) {
+      const stats = this.ignoreFilter.getStats();
+      console.error(`[ClaudeIgnore] Loaded ${stats.totalPatterns} patterns ` +
+        `(universal: ${stats.universalPatterns}, global: ${stats.globalPatterns}, ` +
+        `project: ${stats.projectPatterns})`);
+    }
   }
 
   /**
@@ -682,6 +695,16 @@ export class QdrantPersistence {
 
     // Sort by score (highest first) after applying boosts
     validResults.sort((a, b) => b.score - a.score);
+
+    // Apply ClaudeIgnore filter if available
+    if (this.ignoreFilter) {
+      const filteredResults = this.ignoreFilter.filterResults(validResults);
+      const filtered = validResults.length - filteredResults.length;
+      if (filtered > 0) {
+        console.error(`[ClaudeIgnore] Filtered ${filtered} results matching ignore patterns`);
+      }
+      return filteredResults;
+    }
 
     return validResults;
   }
