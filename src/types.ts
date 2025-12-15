@@ -208,3 +208,6 @@ export interface TicketContent {
   team?: string;
   milestone?: string;
 }
+
+// Re-export Plan Mode types for convenience
+export type { AccessCheckResult } from './plan-mode-guard.js';

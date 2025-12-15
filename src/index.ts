@@ -37,7 +37,9 @@ import {
   validateGetDocRequest,
   validateSearchTicketsRequest,
   validateGetTicketRequest,
+  validateSetPlanModeRequest,
 } from './validation.js';
+import { PlanModeGuard } from './plan-mode-guard.js';
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
 
@@ -221,12 +223,13 @@ interface CallToolRequest {
 class MemoryServer {
   private server: Server;
   private graphManager: KnowledgeGraphManager;
+  private planModeGuard: PlanModeGuard;
 
   constructor() {
     this.server = new Server(
       {
         name: "memory",
-        version: "0.6.3",
+        version: "0.6.4",
       },
       {
         capabilities: {
@@ -236,6 +239,7 @@ class MemoryServer {
     );
 
     this.graphManager = new KnowledgeGraphManager();
+    this.planModeGuard = new PlanModeGuard();
     // Initialization happens in run() method before server connects
     this.setupToolHandlers();
   }
@@ -599,6 +603,20 @@ class MemoryServer {
             },
             required: ["ticketId"]
           }
+        },
+        {
+          name: "set_plan_mode",
+          description: "Enable or disable Plan Mode. When enabled, only read-only operations are allowed (search, read, get). Write operations (create, delete, add) are blocked to prevent accidental modifications during planning.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+                description: "true to enable Plan Mode (read-only), false to disable and allow all operations"
+              }
+            },
+            required: ["enabled"]
+          }
         }
       ],
     }));
@@ -609,6 +627,25 @@ class MemoryServer {
           ErrorCode.InvalidParams,
           "Missing arguments"
         );
+      }
+
+      // Plan Mode access control check (Milestone 8.4)
+      const accessCheck = this.planModeGuard.checkAccess(request.params.name);
+      if (!accessCheck.allowed) {
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              error: "PLAN_MODE_ACCESS_DENIED",
+              message: accessCheck.reason,
+              tool: accessCheck.toolName,
+              planModeActive: true,
+              blockedTools: this.planModeGuard.getBlockedTools(),
+              hint: "Use set_plan_mode({ enabled: false }) to exit Plan Mode before making changes."
+            }, null, 2)
+          }],
+          isError: true
+        };
       }
 
       try {
@@ -862,6 +899,24 @@ class MemoryServer {
 
             return {
               content: [{ type: "text", text: JSON.stringify(ticket) }],
+            };
+          }
+
+          case "set_plan_mode": {
+            const args = validateSetPlanModeRequest(request.params.arguments);
+            this.planModeGuard.setPlanMode(args.enabled);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify({
+                  planModeEnabled: args.enabled,
+                  message: args.enabled
+                    ? "Plan Mode enabled. Only read-only operations allowed (search_similar, read_graph, get_implementation, search_docs, get_doc, search_tickets, get_ticket)."
+                    : "Plan Mode disabled. All operations allowed.",
+                  blockedTools: args.enabled ? this.planModeGuard.getBlockedTools() : [],
+                  allowedTools: this.planModeGuard.getAllowedTools()
+                }, null, 2)
+              }]
             };
           }
 

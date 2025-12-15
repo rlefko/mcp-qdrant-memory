@@ -490,3 +490,21 @@ export function validateGetTicketRequest(args: unknown): GetTicketRequest {
     collection: collection as string | undefined
   };
 }
+
+// Plan Mode access control types (Milestone 8.4)
+export interface SetPlanModeRequest {
+  enabled: boolean;
+}
+
+export function validateSetPlanModeRequest(args: unknown): SetPlanModeRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { enabled } = args;
+  if (typeof enabled !== 'boolean') {
+    throw new McpError(ErrorCode.InvalidParams, "enabled must be a boolean");
+  }
+
+  return { enabled };
+}
