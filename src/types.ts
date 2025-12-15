@@ -114,3 +114,48 @@ export interface SemanticMetadata {
   complexity?: number;
   inferred_types?: string[];
 }
+
+// Design document types
+export type DocType = 'prd' | 'tdd' | 'adr' | 'spec';
+
+// Search result for design documents
+export interface DocSearchResult {
+  type: 'doc';
+  score: number;
+  data: {
+    id: string;
+    entity_name: string;
+    doc_type: DocType;
+    title: string;
+    file_path: string;
+    section_count?: number;
+    requirement_count?: number;
+    content_preview: string;
+  };
+}
+
+// Full document content
+export interface DocContent {
+  id: string;
+  entity_name: string;
+  doc_type: DocType;
+  title: string;
+  file_path: string;
+  content: string;
+  sections: Array<{
+    name: string;
+    level: number;
+    content: string;
+    line_number?: number;
+  }>;
+  requirements: Array<{
+    id: string;
+    text: string;
+    type: 'mandatory' | 'recommended' | 'optional' | 'general';
+    source_section?: string;
+  }>;
+  metadata: {
+    section_count: number;
+    requirement_count: number;
+  };
+}

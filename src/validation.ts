@@ -59,6 +59,19 @@ export interface ReadGraphRequest {
   collection?: string;
 }
 
+export interface SearchDocsRequest {
+  query: string;
+  docTypes?: ('prd' | 'tdd' | 'adr' | 'spec')[];
+  limit?: number;
+  collection?: string;
+}
+
+export interface GetDocRequest {
+  docId: string;
+  section?: string;
+  collection?: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -323,4 +336,55 @@ export function validateReadGraphRequest(args: unknown): ReadGraphRequest {
     entity: entity as string | undefined,
     collection: collection as string | undefined
   };
+}
+
+export function validateSearchDocsRequest(args: unknown): SearchDocsRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { query, docTypes, limit, collection } = args;
+
+  if (typeof query !== 'string' || query.trim().length === 0) {
+    throw new McpError(ErrorCode.InvalidParams, "Missing or invalid query string");
+  }
+
+  const validDocTypes = ['prd', 'tdd', 'adr', 'spec'];
+  if (docTypes !== undefined) {
+    if (!Array.isArray(docTypes) || !docTypes.every(t => typeof t === 'string' && validDocTypes.includes(t))) {
+      throw new McpError(ErrorCode.InvalidParams, "docTypes must be array of: prd, tdd, adr, spec");
+    }
+  }
+
+  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
+  }
+
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { query, docTypes: docTypes as SearchDocsRequest['docTypes'], limit, collection };
+}
+
+export function validateGetDocRequest(args: unknown): GetDocRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { docId, section, collection } = args;
+
+  if (typeof docId !== 'string' || docId.trim().length === 0) {
+    throw new McpError(ErrorCode.InvalidParams, "Missing or invalid docId string");
+  }
+
+  if (section !== undefined && typeof section !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "section must be a string");
+  }
+
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return { docId, section, collection };
 }

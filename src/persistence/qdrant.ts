@@ -8,7 +8,7 @@ import {
   QDRANT_API_KEY,
   getCollectionName
 } from "../config.js";
-import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata } from "../types.js";
+import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata, DocSearchResult, DocContent, DocType } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
 import { ClaudeIgnoreFilter, createFilterFromEnv } from "../claudeignore/index.js";
 
@@ -1867,6 +1867,235 @@ export class QdrantPersistence {
     console.error(`BM25 index initialized with ${chunks.length} metadata chunks`);
     console.error(`[DEBUG] Final stats: ${batchCount} batches, ${collected} collected, last_offset=${offset}`);
     return chunks;
+  }
+
+  /**
+   * Search design documents with optional type filtering
+   */
+  async searchDocs(query: string, docTypes?: string[], limit: number = 10, collection?: string): Promise<DocSearchResult[]> {
+    await this.connect();
+    const col = this.resolveCollection(collection);
+
+    const designDocTypes = docTypes?.length ? docTypes : ['prd', 'tdd', 'adr', 'spec'];
+    const queryVector = await this.generateEmbedding(query);
+
+    // Filter for design document entity types
+    const filter: any = {
+      must: [
+        { key: "chunk_type", match: { value: "metadata" } }
+      ],
+      should: [
+        { key: "entity_type", match: { any: designDocTypes } },
+        { key: "metadata.entity_type", match: { any: designDocTypes } }
+      ]
+    };
+
+    const results = await this.client.search(col, {
+      vector: { name: 'dense', vector: queryVector },
+      limit,
+      with_payload: true,
+      filter
+    });
+
+    return this.processDocSearchResults(results);
+  }
+
+  private processDocSearchResults(results: any[]): DocSearchResult[] {
+    const docResults: DocSearchResult[] = [];
+
+    for (const result of results) {
+      if (!result.payload) continue;
+      const payload = result.payload as any;
+
+      const entityType = payload.metadata?.entity_type || payload.entity_type;
+      const entityName = payload.entity_name || payload.name || 'unknown';
+      const filePath = payload.metadata?.file_path || payload.file_path || '';
+      const content = payload.content || '';
+
+      if (!['prd', 'tdd', 'adr', 'spec'].includes(entityType)) continue;
+
+      const title = entityName.includes(':')
+        ? entityName.split(':').slice(1).join(':').trim()
+        : entityName;
+
+      docResults.push({
+        type: 'doc',
+        score: result.score,
+        data: {
+          id: payload.id || `${filePath}::${entityName}`,
+          entity_name: entityName,
+          doc_type: entityType as DocType,
+          title,
+          file_path: filePath,
+          section_count: payload.metadata?.section_count,
+          requirement_count: payload.metadata?.requirement_count,
+          content_preview: content.substring(0, 300) + (content.length > 300 ? '...' : '')
+        }
+      });
+    }
+
+    return docResults;
+  }
+
+  /**
+   * Get full document content with sections and requirements
+   */
+  async getDoc(docId: string, section?: string, collection?: string): Promise<DocContent | null> {
+    await this.connect();
+    const col = this.resolveCollection(collection);
+
+    // Find document by entity_name or file_path
+    const docResults = await this.client.scroll(col, {
+      limit: 100,
+      with_payload: true,
+      with_vector: false,
+      filter: {
+        must: [{ key: "chunk_type", match: { value: "metadata" } }],
+        should: [
+          { key: "entity_name", match: { value: docId } },
+          { key: "metadata.file_path", match: { value: docId } },
+          { key: "file_path", match: { value: docId } }
+        ]
+      }
+    });
+
+    // Find the main document entity
+    let docPayload: any = null;
+    for (const point of docResults.points) {
+      const payload = point.payload as any;
+      const entityType = payload.metadata?.entity_type || payload.entity_type;
+      if (['prd', 'tdd', 'adr', 'spec'].includes(entityType)) {
+        const entityName = payload.entity_name || '';
+        if (entityName === docId || payload.file_path === docId || payload.metadata?.file_path === docId) {
+          docPayload = payload;
+          break;
+        }
+      }
+    }
+
+    if (!docPayload) return null;
+
+    const entityName = docPayload.entity_name || docPayload.name;
+    const entityType = docPayload.metadata?.entity_type || docPayload.entity_type;
+    const filePath = docPayload.metadata?.file_path || docPayload.file_path || '';
+
+    // Get implementation chunk for full content
+    const implResults = await this.client.scroll(col, {
+      limit: 1,
+      with_payload: true,
+      with_vector: false,
+      filter: {
+        must: [
+          { key: "entity_name", match: { value: entityName } },
+          { key: "chunk_type", match: { value: "implementation" } }
+        ]
+      }
+    });
+
+    const fullContent = implResults.points.length > 0
+      ? (implResults.points[0].payload as any).content
+      : docPayload.content || '';
+
+    // Get sections
+    const sections = await this.getDocSections(filePath, section, col);
+
+    // Get requirements
+    const requirements = await this.getDocRequirements(filePath, col);
+
+    const title = entityName.includes(':')
+      ? entityName.split(':').slice(1).join(':').trim()
+      : entityName;
+
+    return {
+      id: docId,
+      entity_name: entityName,
+      doc_type: entityType as DocType,
+      title,
+      file_path: filePath,
+      content: fullContent,
+      sections,
+      requirements,
+      metadata: {
+        section_count: docPayload.metadata?.section_count || sections.length,
+        requirement_count: docPayload.metadata?.requirement_count || requirements.length
+      }
+    };
+  }
+
+  private async getDocSections(filePath: string, filterSection?: string, col?: string): Promise<Array<{ name: string; level: number; content: string; line_number?: number }>> {
+    const collection = col || this.resolveCollection();
+
+    const sectionResults = await this.client.scroll(collection, {
+      limit: 100,
+      with_payload: true,
+      with_vector: false,
+      filter: {
+        must: [{ key: "chunk_type", match: { value: "metadata" } }],
+        should: [
+          { key: "metadata.entity_type", match: { value: "section" } },
+          { key: "entity_type", match: { value: "section" } }
+        ]
+      }
+    });
+
+    const sections: Array<{ name: string; level: number; content: string; line_number?: number }> = [];
+
+    for (const point of sectionResults.points) {
+      const payload = point.payload as any;
+      const sectionFilePath = payload.metadata?.file_path || payload.file_path || '';
+
+      if (sectionFilePath !== filePath) continue;
+
+      const sectionName = payload.entity_name || payload.name || '';
+
+      if (filterSection && !sectionName.toLowerCase().includes(filterSection.toLowerCase())) {
+        continue;
+      }
+
+      sections.push({
+        name: sectionName.replace('Section: ', ''),
+        level: payload.metadata?.heading_level || 1,
+        content: payload.content || '',
+        line_number: payload.metadata?.line_number || payload.line_number
+      });
+    }
+
+    return sections.sort((a, b) => (a.line_number || 0) - (b.line_number || 0));
+  }
+
+  private async getDocRequirements(filePath: string, col?: string): Promise<Array<{ id: string; text: string; type: 'mandatory' | 'recommended' | 'optional' | 'general'; source_section?: string }>> {
+    const collection = col || this.resolveCollection();
+
+    const reqResults = await this.client.scroll(collection, {
+      limit: 200,
+      with_payload: true,
+      with_vector: false,
+      filter: {
+        must: [{ key: "chunk_type", match: { value: "metadata" } }],
+        should: [
+          { key: "metadata.entity_type", match: { value: "requirement" } },
+          { key: "entity_type", match: { value: "requirement" } }
+        ]
+      }
+    });
+
+    const requirements: Array<{ id: string; text: string; type: 'mandatory' | 'recommended' | 'optional' | 'general'; source_section?: string }> = [];
+
+    for (const point of reqResults.points) {
+      const payload = point.payload as any;
+      const reqFilePath = payload.metadata?.file_path || payload.file_path || '';
+
+      if (reqFilePath !== filePath) continue;
+
+      requirements.push({
+        id: payload.entity_name || payload.name || '',
+        text: payload.metadata?.full_text || payload.content || '',
+        type: (payload.metadata?.requirement_type || 'general') as 'mandatory' | 'recommended' | 'optional' | 'general',
+        source_section: payload.metadata?.parent_section
+      });
+    }
+
+    return requirements;
   }
 }
 // Test modification at Tue Jul 15 23:09:50 CEST 2025

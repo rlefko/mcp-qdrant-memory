@@ -18,7 +18,7 @@ import {
 // import path from 'path'; // Removed: No longer needed for file paths
 // import { fileURLToPath } from 'url'; // Removed: No longer needed for file paths
 import { QdrantPersistence } from './persistence/qdrant.js';
-import { Entity, Relation, KnowledgeGraph, SmartGraph, ScrollOptions, StreamingGraphResponse, SearchResult } from './types.js';
+import { Entity, Relation, KnowledgeGraph, SmartGraph, ScrollOptions, StreamingGraphResponse, SearchResult, DocSearchResult, DocContent } from './types.js';
 import { streamingResponseBuilder } from './streamingResponseBuilder.js';
 import { tokenCounter, TOKEN_CONFIG } from './tokenCounter.js';
 import { COLLECTION_NAME } from './config.js';
@@ -33,6 +33,8 @@ import {
   validateSearchSimilarRequest,
   validateGetImplementationRequest,
   validateReadGraphRequest,
+  validateSearchDocsRequest,
+  validateGetDocRequest,
 } from './validation.js';
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
@@ -176,6 +178,14 @@ class KnowledgeGraphManager {
 
   async getEntitySpecificGraph(entityName: string, mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'smart', limit?: number, collection?: string): Promise<any> {
     return await this.qdrant.getEntitySpecificGraph(entityName, mode, limit, collection);
+  }
+
+  async searchDocs(query: string, docTypes?: string[], limit: number = 10, collection?: string): Promise<DocSearchResult[]> {
+    return await this.qdrant.searchDocs(query, docTypes, limit, collection);
+  }
+
+  async getDoc(docId: string, section?: string, collection?: string): Promise<DocContent | null> {
+    return await this.qdrant.getDoc(docId, section, collection);
   }
 }
 
@@ -452,6 +462,56 @@ class MemoryServer {
             },
             required: ["entityName"]
           }
+        },
+        {
+          name: "search_docs",
+          description: "Search design documents, specifications, PRDs, and ADRs",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query for finding relevant design documents"
+              },
+              docTypes: {
+                type: "array",
+                items: { type: "string" },
+                description: "Filter by document types: prd, tdd, adr, spec. If omitted, searches all types."
+              },
+              limit: {
+                type: "number",
+                default: 10,
+                description: "Maximum number of documents to return"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
+              }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "get_doc",
+          description: "Retrieve full content of a specific design document with its sections and requirements",
+          inputSchema: {
+            type: "object",
+            properties: {
+              docId: {
+                type: "string",
+                description: "Document ID (entity_name like 'PRD: Feature Title') or file path"
+              },
+              section: {
+                type: "string",
+                description: "Optional: filter to specific section by name"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
+              }
+            },
+            required: ["docId"]
+          }
         }
       ],
     }));
@@ -646,6 +706,39 @@ class MemoryServer {
                   text: JSON.stringify(finalResponse),
                 },
               ],
+            };
+          }
+
+          case "search_docs": {
+            const args = validateSearchDocsRequest(request.params.arguments);
+
+            const results = await this.graphManager.searchDocs(
+              args.query,
+              args.docTypes,
+              args.limit || 10,
+              args.collection
+            );
+
+            return {
+              content: [{ type: "text", text: JSON.stringify({ results, count: results.length }) }],
+            };
+          }
+
+          case "get_doc": {
+            const args = validateGetDocRequest(request.params.arguments);
+
+            const doc = await this.graphManager.getDoc(
+              args.docId,
+              args.section,
+              args.collection
+            );
+
+            if (!doc) {
+              throw new McpError(ErrorCode.InvalidParams, `Document not found: ${args.docId}`);
+            }
+
+            return {
+              content: [{ type: "text", text: JSON.stringify(doc) }],
             };
           }
 
