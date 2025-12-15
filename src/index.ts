@@ -18,7 +18,7 @@ import {
 // import path from 'path'; // Removed: No longer needed for file paths
 // import { fileURLToPath } from 'url'; // Removed: No longer needed for file paths
 import { QdrantPersistence } from './persistence/qdrant.js';
-import { Entity, Relation, KnowledgeGraph, SmartGraph, ScrollOptions, StreamingGraphResponse, SearchResult, DocSearchResult, DocContent } from './types.js';
+import { Entity, Relation, KnowledgeGraph, SmartGraph, ScrollOptions, StreamingGraphResponse, SearchResult, DocSearchResult, DocContent, TicketSearchResult, TicketContent } from './types.js';
 import { streamingResponseBuilder } from './streamingResponseBuilder.js';
 import { tokenCounter, TOKEN_CONFIG } from './tokenCounter.js';
 import { COLLECTION_NAME } from './config.js';
@@ -35,6 +35,8 @@ import {
   validateReadGraphRequest,
   validateSearchDocsRequest,
   validateGetDocRequest,
+  validateSearchTicketsRequest,
+  validateGetTicketRequest,
 } from './validation.js';
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
@@ -186,6 +188,26 @@ class KnowledgeGraphManager {
 
   async getDoc(docId: string, section?: string, collection?: string): Promise<DocContent | null> {
     return await this.qdrant.getDoc(docId, section, collection);
+  }
+
+  async searchTickets(
+    query?: string,
+    status?: string[],
+    labels?: string[],
+    source?: string[],
+    limit: number = 20,
+    collection?: string
+  ): Promise<TicketSearchResult[]> {
+    return await this.qdrant.searchTickets(query, status, labels, source, limit, collection);
+  }
+
+  async getTicket(
+    ticketId: string,
+    includeComments: boolean = true,
+    includePRs: boolean = true,
+    collection?: string
+  ): Promise<TicketContent | null> {
+    return await this.qdrant.getTicket(ticketId, includeComments, includePRs, collection);
   }
 }
 
@@ -512,6 +534,71 @@ class MemoryServer {
             },
             required: ["docId"]
           }
+        },
+        {
+          name: "search_tickets",
+          description: "Search issue tickets from Linear and GitHub Issues",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query for ticket title/description"
+              },
+              status: {
+                type: "array",
+                items: { type: "string" },
+                description: "Filter by status: open, in_progress, done, cancelled"
+              },
+              labels: {
+                type: "array",
+                items: { type: "string" },
+                description: "Filter by labels"
+              },
+              source: {
+                type: "array",
+                items: { type: "string" },
+                description: "Filter by source: linear, github"
+              },
+              limit: {
+                type: "number",
+                default: 20,
+                description: "Maximum number of tickets to return"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
+              }
+            }
+          }
+        },
+        {
+          name: "get_ticket",
+          description: "Get full ticket details with comments and linked PRs",
+          inputSchema: {
+            type: "object",
+            properties: {
+              ticketId: {
+                type: "string",
+                description: "Ticket ID (e.g., AVO-123 for Linear, owner/repo#456 for GitHub)"
+              },
+              includeComments: {
+                type: "boolean",
+                default: true,
+                description: "Include ticket comments"
+              },
+              includePRs: {
+                type: "boolean",
+                default: true,
+                description: "Include linked pull requests"
+              },
+              collection: {
+                type: "string",
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
+              }
+            },
+            required: ["ticketId"]
+          }
         }
       ],
     }));
@@ -739,6 +826,42 @@ class MemoryServer {
 
             return {
               content: [{ type: "text", text: JSON.stringify(doc) }],
+            };
+          }
+
+          case "search_tickets": {
+            const args = validateSearchTicketsRequest(request.params.arguments);
+
+            const results = await this.graphManager.searchTickets(
+              args.query,
+              args.status,
+              args.labels,
+              args.source,
+              args.limit || 20,
+              args.collection
+            );
+
+            return {
+              content: [{ type: "text", text: JSON.stringify({ results, count: results.length }) }],
+            };
+          }
+
+          case "get_ticket": {
+            const args = validateGetTicketRequest(request.params.arguments);
+
+            const ticket = await this.graphManager.getTicket(
+              args.ticketId,
+              args.includeComments !== false,
+              args.includePRs !== false,
+              args.collection
+            );
+
+            if (!ticket) {
+              throw new McpError(ErrorCode.InvalidParams, `Ticket not found: ${args.ticketId}`);
+            }
+
+            return {
+              content: [{ type: "text", text: JSON.stringify(ticket) }],
             };
           }
 

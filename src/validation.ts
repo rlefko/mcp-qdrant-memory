@@ -388,3 +388,105 @@ export function validateGetDocRequest(args: unknown): GetDocRequest {
 
   return { docId, section, collection };
 }
+
+// Ticket integration types (Milestone 8.3)
+export interface SearchTicketsRequest {
+  query?: string;
+  status?: ('open' | 'in_progress' | 'done' | 'cancelled')[];
+  labels?: string[];
+  source?: ('linear' | 'github')[];
+  limit?: number;
+  collection?: string;
+}
+
+export interface GetTicketRequest {
+  ticketId: string;
+  includeComments?: boolean;
+  includePRs?: boolean;
+  collection?: string;
+}
+
+export function validateSearchTicketsRequest(args: unknown): SearchTicketsRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { query, status, labels, source, limit, collection } = args;
+
+  // At least one search parameter required
+  if (!query && !status && !labels && !source) {
+    throw new McpError(ErrorCode.InvalidParams, "At least one search parameter required (query, status, labels, or source)");
+  }
+
+  if (query !== undefined && typeof query !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "query must be a string");
+  }
+
+  const validStatuses = ['open', 'in_progress', 'done', 'cancelled'];
+  if (status !== undefined) {
+    if (!Array.isArray(status) || !status.every(s => typeof s === 'string' && validStatuses.includes(s))) {
+      throw new McpError(ErrorCode.InvalidParams, `status must be array of: ${validStatuses.join(', ')}`);
+    }
+  }
+
+  if (labels !== undefined) {
+    if (!Array.isArray(labels) || !labels.every(l => typeof l === 'string')) {
+      throw new McpError(ErrorCode.InvalidParams, "labels must be array of strings");
+    }
+  }
+
+  const validSources = ['linear', 'github'];
+  if (source !== undefined) {
+    if (!Array.isArray(source) || !source.every(s => typeof s === 'string' && validSources.includes(s))) {
+      throw new McpError(ErrorCode.InvalidParams, `source must be array of: ${validSources.join(', ')}`);
+    }
+  }
+
+  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
+  }
+
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return {
+    query: query as string | undefined,
+    status: status as SearchTicketsRequest['status'],
+    labels: labels as string[] | undefined,
+    source: source as SearchTicketsRequest['source'],
+    limit: limit as number | undefined,
+    collection: collection as string | undefined
+  };
+}
+
+export function validateGetTicketRequest(args: unknown): GetTicketRequest {
+  if (!isRecord(args)) {
+    throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
+  }
+
+  const { ticketId, includeComments, includePRs, collection } = args;
+
+  if (typeof ticketId !== 'string' || ticketId.trim().length === 0) {
+    throw new McpError(ErrorCode.InvalidParams, "Missing or invalid ticketId string");
+  }
+
+  if (includeComments !== undefined && typeof includeComments !== 'boolean') {
+    throw new McpError(ErrorCode.InvalidParams, "includeComments must be a boolean");
+  }
+
+  if (includePRs !== undefined && typeof includePRs !== 'boolean') {
+    throw new McpError(ErrorCode.InvalidParams, "includePRs must be a boolean");
+  }
+
+  if (collection !== undefined && typeof collection !== 'string') {
+    throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
+  }
+
+  return {
+    ticketId,
+    includeComments: includeComments as boolean | undefined,
+    includePRs: includePRs as boolean | undefined,
+    collection: collection as string | undefined
+  };
+}

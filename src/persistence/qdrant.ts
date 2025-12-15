@@ -8,7 +8,7 @@ import {
   QDRANT_API_KEY,
   getCollectionName
 } from "../config.js";
-import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata, DocSearchResult, DocContent, DocType } from "../types.js";
+import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata, DocSearchResult, DocContent, DocType, TicketSearchResult, TicketContent, TicketComment, TicketStatus, TicketPriority, TicketSource } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
 import { ClaudeIgnoreFilter, createFilterFromEnv } from "../claudeignore/index.js";
 
@@ -2096,6 +2096,442 @@ export class QdrantPersistence {
     }
 
     return requirements;
+  }
+
+  // Ticket integration methods (Milestone 8.3)
+
+  async searchTickets(
+    query?: string,
+    status?: string[],
+    labels?: string[],
+    source?: string[],
+    limit: number = 20,
+    collection?: string
+  ): Promise<TicketSearchResult[]> {
+    const results: TicketSearchResult[] = [];
+    const searchSources = source || ['linear', 'github'];
+
+    // Search Linear if enabled
+    if (searchSources.includes('linear') && process.env.LINEAR_API_KEY) {
+      try {
+        const linearResults = await this.searchLinearTickets(query, status, labels, limit);
+        results.push(...linearResults);
+      } catch (error) {
+        console.error('Linear search error:', error);
+      }
+    }
+
+    // Search GitHub if enabled
+    if (searchSources.includes('github') && process.env.GITHUB_TOKEN) {
+      try {
+        const githubResults = await this.searchGitHubTickets(query, status, labels, limit);
+        results.push(...githubResults);
+      } catch (error) {
+        console.error('GitHub search error:', error);
+      }
+    }
+
+    // Sort by score and limit results
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, limit);
+  }
+
+  private async searchLinearTickets(
+    query?: string,
+    status?: string[],
+    labels?: string[],
+    limit: number = 20
+  ): Promise<TicketSearchResult[]> {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) return [];
+
+    const graphqlQuery = `
+      query SearchIssues($limit: Int) {
+        issues(first: $limit) {
+          nodes {
+            id
+            identifier
+            title
+            description
+            state { name type }
+            priority
+            labels { nodes { name } }
+            assignee { name }
+            url
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': apiKey,
+        },
+        body: JSON.stringify({
+          query: graphqlQuery,
+          variables: { limit: Math.min(limit * 2, 50) },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Linear API error: ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      const issues = data.data?.issues?.nodes || [];
+
+      return issues
+        .filter((issue: any) => {
+          // Filter by query
+          if (query) {
+            const searchText = `${issue.title} ${issue.description || ''}`.toLowerCase();
+            if (!searchText.includes(query.toLowerCase())) return false;
+          }
+          // Filter by status
+          if (status && status.length > 0) {
+            const normalizedStatus = this.normalizeLinearStatus(issue.state?.type || issue.state?.name);
+            if (!status.includes(normalizedStatus)) return false;
+          }
+          // Filter by labels
+          if (labels && labels.length > 0) {
+            const issueLabels = (issue.labels?.nodes || []).map((l: any) => l.name);
+            if (!labels.some(l => issueLabels.includes(l))) return false;
+          }
+          return true;
+        })
+        .map((issue: any): TicketSearchResult => ({
+          type: 'ticket',
+          score: 1.0,
+          data: {
+            id: issue.id,
+            identifier: issue.identifier,
+            source: 'linear',
+            title: issue.title,
+            status: this.normalizeLinearStatus(issue.state?.type || issue.state?.name) as TicketStatus,
+            priority: this.normalizeLinearPriority(issue.priority) as TicketPriority,
+            labels: (issue.labels?.nodes || []).map((l: any) => l.name),
+            url: issue.url,
+            content_preview: (issue.description || '').substring(0, 200),
+          },
+        }));
+    } catch (error) {
+      console.error('Linear search error:', error);
+      return [];
+    }
+  }
+
+  private async searchGitHubTickets(
+    query?: string,
+    status?: string[],
+    labels?: string[],
+    limit: number = 20
+  ): Promise<TicketSearchResult[]> {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return [];
+
+    // Build search query
+    const searchParts = ['type:issue'];
+    if (query) searchParts.push(query);
+    if (status?.includes('open') && !status?.includes('done')) {
+      searchParts.push('state:open');
+    } else if (status?.includes('done') && !status?.includes('open')) {
+      searchParts.push('state:closed');
+    }
+    if (labels) {
+      labels.forEach(l => searchParts.push(`label:"${l}"`));
+    }
+
+    try {
+      const searchQuery = encodeURIComponent(searchParts.join(' '));
+      const response = await fetch(
+        `https://api.github.com/search/issues?q=${searchQuery}&per_page=${limit}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      const items = data.items || [];
+
+      return items.map((item: any): TicketSearchResult => {
+        // Extract owner/repo from URL
+        const repoMatch = item.repository_url?.match(/repos\/([^/]+)\/([^/]+)/);
+        const owner = repoMatch?.[1] || '';
+        const repo = repoMatch?.[2] || '';
+        const identifier = `${owner}/${repo}#${item.number}`;
+
+        return {
+          type: 'ticket',
+          score: 1.0,
+          data: {
+            id: String(item.id),
+            identifier,
+            source: 'github',
+            title: item.title,
+            status: item.state === 'open' ? 'open' : 'done',
+            priority: this.inferGitHubPriority(item.labels || []) as TicketPriority,
+            labels: (item.labels || []).map((l: any) => l.name),
+            url: item.html_url,
+            content_preview: (item.body || '').substring(0, 200),
+          },
+        };
+      });
+    } catch (error) {
+      console.error('GitHub search error:', error);
+      return [];
+    }
+  }
+
+  async getTicket(
+    ticketId: string,
+    includeComments: boolean = true,
+    includePRs: boolean = true,
+    collection?: string
+  ): Promise<TicketContent | null> {
+    // Determine source from ticketId format
+    // Linear: "AVO-123" or UUID
+    // GitHub: "owner/repo#123"
+    if (ticketId.includes('/') && ticketId.includes('#')) {
+      return this.getGitHubTicket(ticketId, includeComments, includePRs);
+    } else {
+      return this.getLinearTicket(ticketId, includeComments, includePRs);
+    }
+  }
+
+  private async getLinearTicket(
+    ticketId: string,
+    includeComments: boolean,
+    includePRs: boolean
+  ): Promise<TicketContent | null> {
+    const apiKey = process.env.LINEAR_API_KEY;
+    if (!apiKey) return null;
+
+    const graphqlQuery = `
+      query GetIssue($id: String!) {
+        issue(id: $id) {
+          id
+          identifier
+          title
+          description
+          state { name type }
+          priority
+          labels { nodes { name } }
+          assignee { name }
+          url
+          createdAt
+          updatedAt
+          project { name }
+          team { name }
+          comments {
+            nodes {
+              id
+              body
+              user { name }
+              createdAt
+              updatedAt
+            }
+          }
+          attachments {
+            nodes { url title }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await fetch('https://api.linear.app/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': apiKey,
+        },
+        body: JSON.stringify({
+          query: graphqlQuery,
+          variables: { id: ticketId },
+        }),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json() as any;
+      const issue = data.data?.issue;
+      if (!issue) return null;
+
+      const comments: TicketComment[] = includeComments
+        ? (issue.comments?.nodes || []).map((c: any) => ({
+            id: c.id,
+            author: c.user?.name || 'Unknown',
+            body: c.body,
+            created_at: c.createdAt,
+            updated_at: c.updatedAt,
+          }))
+        : [];
+
+      const linked_prs: string[] = includePRs
+        ? (issue.attachments?.nodes || [])
+            .filter((a: any) => a.url?.includes('github.com') && a.url?.includes('/pull/'))
+            .map((a: any) => a.url)
+        : [];
+
+      return {
+        id: issue.id,
+        identifier: issue.identifier,
+        source: 'linear',
+        title: issue.title,
+        description: issue.description || '',
+        status: this.normalizeLinearStatus(issue.state?.type || issue.state?.name) as TicketStatus,
+        priority: this.normalizeLinearPriority(issue.priority) as TicketPriority,
+        labels: (issue.labels?.nodes || []).map((l: any) => l.name),
+        assignee: issue.assignee?.name,
+        url: issue.url,
+        created_at: issue.createdAt,
+        updated_at: issue.updatedAt,
+        comments,
+        linked_prs,
+        project: issue.project?.name,
+        team: issue.team?.name,
+      };
+    } catch (error) {
+      console.error('Linear getTicket error:', error);
+      return null;
+    }
+  }
+
+  private async getGitHubTicket(
+    ticketId: string,
+    includeComments: boolean,
+    includePRs: boolean
+  ): Promise<TicketContent | null> {
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) return null;
+
+    // Parse owner/repo#number
+    const match = ticketId.match(/^([^/]+)\/([^#]+)#(\d+)$/);
+    if (!match) return null;
+    const [, owner, repo, number] = match;
+
+    try {
+      // Get issue details
+      const issueResponse = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/issues/${number}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        }
+      );
+
+      if (!issueResponse.ok) return null;
+
+      const issue = await issueResponse.json() as any;
+
+      // Get comments if requested
+      let comments: TicketComment[] = [];
+      if (includeComments) {
+        const commentsResponse = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+          }
+        );
+
+        if (commentsResponse.ok) {
+          const commentsData = await commentsResponse.json() as any[];
+          comments = commentsData.map((c: any) => ({
+            id: String(c.id),
+            author: c.user?.login || 'Unknown',
+            body: c.body,
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+          }));
+        }
+      }
+
+      // Extract PR links from body
+      let linked_prs: string[] = [];
+      if (includePRs && issue.body) {
+        const prPattern = /https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/g;
+        linked_prs = issue.body.match(prPattern) || [];
+      }
+
+      return {
+        id: String(issue.id),
+        identifier: ticketId,
+        source: 'github',
+        title: issue.title,
+        description: issue.body || '',
+        status: issue.state === 'open' ? 'open' : 'done',
+        priority: this.inferGitHubPriority(issue.labels || []) as TicketPriority,
+        labels: (issue.labels || []).map((l: any) => l.name),
+        assignee: issue.assignee?.login,
+        url: issue.html_url,
+        created_at: issue.created_at,
+        updated_at: issue.updated_at,
+        comments,
+        linked_prs,
+        project: `${owner}/${repo}`,
+        milestone: issue.milestone?.title,
+      };
+    } catch (error) {
+      console.error('GitHub getTicket error:', error);
+      return null;
+    }
+  }
+
+  // Helper methods for ticket normalization
+
+  private normalizeLinearStatus(state: string): string {
+    const stateMap: Record<string, string> = {
+      'backlog': 'open',
+      'todo': 'open',
+      'unstarted': 'open',
+      'started': 'in_progress',
+      'in progress': 'in_progress',
+      'in review': 'in_progress',
+      'done': 'done',
+      'completed': 'done',
+      'cancelled': 'cancelled',
+      'canceled': 'cancelled',
+      'duplicate': 'cancelled',
+    };
+    return stateMap[state?.toLowerCase()] || 'open';
+  }
+
+  private normalizeLinearPriority(priority: number | null): string {
+    const priorityMap: Record<number, string> = {
+      0: 'none',
+      1: 'urgent',
+      2: 'high',
+      3: 'medium',
+      4: 'low',
+    };
+    return priorityMap[priority ?? 0] || 'none';
+  }
+
+  private inferGitHubPriority(labels: any[]): string {
+    const labelNames = labels.map((l: any) => (l.name || l).toLowerCase());
+    if (labelNames.some(l => /urgent|critical|p0|priority[:\s]*0/.test(l))) return 'urgent';
+    if (labelNames.some(l => /high|important|p1|priority[:\s]*1/.test(l))) return 'high';
+    if (labelNames.some(l => /medium|normal|p2|priority[:\s]*2/.test(l))) return 'medium';
+    if (labelNames.some(l => /low|minor|p3|priority[:\s]*3/.test(l))) return 'low';
+    return 'none';
   }
 }
 // Test modification at Tue Jul 15 23:09:50 CEST 2025

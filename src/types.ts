@@ -159,3 +159,52 @@ export interface DocContent {
     requirement_count: number;
   };
 }
+
+// Ticket integration types (Milestone 8.3)
+export type TicketSource = 'linear' | 'github';
+export type TicketStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
+export type TicketPriority = 'urgent' | 'high' | 'medium' | 'low' | 'none';
+
+export interface TicketSearchResult {
+  type: 'ticket';
+  score: number;
+  data: {
+    id: string;
+    identifier: string;
+    source: TicketSource;
+    title: string;
+    status: TicketStatus;
+    priority: TicketPriority;
+    labels: string[];
+    url: string;
+    content_preview: string;
+  };
+}
+
+export interface TicketComment {
+  id: string;
+  author: string;
+  body: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface TicketContent {
+  id: string;
+  identifier: string;
+  source: TicketSource;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  labels: string[];
+  assignee?: string;
+  url: string;
+  created_at?: string;
+  updated_at?: string;
+  comments: TicketComment[];
+  linked_prs: string[];
+  project?: string;
+  team?: string;
+  milestone?: string;
+}
