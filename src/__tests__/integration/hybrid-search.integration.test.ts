@@ -3,14 +3,10 @@
  * Tests semantic + BM25 fusion, search modes, and result processing.
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import {
-  BM25Service,
-  HybridSearchFusion,
-  BM25Document,
-  BM25SearchResult,
-} from "../../bm25/bm25Service.js";
-import { SearchResult } from "../../types.js";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { BM25Document, BM25SearchResult } from "../../bm25/bm25Service.js";
+import { BM25Service, HybridSearchFusion } from "../../bm25/bm25Service.js";
+import type { SearchResult } from "../../types.js";
 
 // Mock console.error to suppress logging during tests
 vi.spyOn(console, "error").mockImplementation(() => {});
@@ -26,13 +22,15 @@ describe("Hybrid Search Integration Tests", () => {
       const documents: BM25Document[] = [
         {
           id: "AuthService",
-          content: "Authentication service class handles user login logout JWT tokens OAuth integration",
+          content:
+            "Authentication service class handles user login logout JWT tokens OAuth integration",
           entityType: "class",
           observations: ["Manages authentication flow", "Supports OAuth providers"],
         },
         {
           id: "validateToken",
-          content: "function validateToken validates JWT tokens checks expiration signature verification",
+          content:
+            "function validateToken validates JWT tokens checks expiration signature verification",
           entityType: "function",
           observations: ["Pure function", "Crypto validation"],
         },
@@ -154,7 +152,11 @@ describe("Hybrid Search Integration Tests", () => {
 
       it("should handle snake_case splitting", () => {
         bm25Service.addDocuments([
-          { id: "validate_user_token", content: "validate user token function", entityType: "function" },
+          {
+            id: "validate_user_token",
+            content: "validate user token function",
+            entityType: "function",
+          },
         ]);
         const results = bm25Service.search("validate token", 10);
         expect(results.length).toBeGreaterThan(0);
@@ -398,14 +400,7 @@ describe("Hybrid Search Integration Tests", () => {
       });
 
       it("should handle both empty results", () => {
-        const fused = HybridSearchFusion.fuseResults(
-          [],
-          [],
-          "test-collection",
-          0.7,
-          0.3,
-          60
-        );
+        const fused = HybridSearchFusion.fuseResults([], [], "test-collection", 0.7, 0.3, 60);
 
         expect(fused.length).toBe(0);
       });
@@ -569,9 +564,7 @@ describe("Hybrid Search Integration Tests", () => {
     describe("Result Format", () => {
       it("should include entity_name in results", () => {
         const bm25Service = new BM25Service();
-        bm25Service.addDocuments([
-          { id: "TestEntity", content: "test", entityType: "class" },
-        ]);
+        bm25Service.addDocuments([{ id: "TestEntity", content: "test", entityType: "class" }]);
 
         const results = bm25Service.search("test", 10);
         expect(results[0].document.id).toBe("TestEntity");
@@ -579,9 +572,7 @@ describe("Hybrid Search Integration Tests", () => {
 
       it("should include entity_type in results", () => {
         const bm25Service = new BM25Service();
-        bm25Service.addDocuments([
-          { id: "TestEntity", content: "test", entityType: "function" },
-        ]);
+        bm25Service.addDocuments([{ id: "TestEntity", content: "test", entityType: "function" }]);
 
         const results = bm25Service.search("test", 10);
         expect(results[0].document.entityType).toBe("function");
@@ -658,9 +649,7 @@ describe("Hybrid Search Integration Tests", () => {
 
         // RRF fusion keeps both metadata and implementation chunks for same entity
         // (deduplication happens at presentation layer, not fusion layer)
-        const duplicateCount = fused.filter(
-          (r) => r.data.entity_name === "DuplicateEntity"
-        ).length;
+        const duplicateCount = fused.filter((r) => r.data.entity_name === "DuplicateEntity").length;
         // Both chunks are kept - metadata and implementation are distinct
         expect(duplicateCount).toBe(2);
       });

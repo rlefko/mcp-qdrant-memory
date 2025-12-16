@@ -19,7 +19,7 @@ export interface EntityChunk extends Record<string, unknown> {
   id: string;
   entity_name: string;
   entity_type: string;
-  chunk_type: 'metadata' | 'implementation';
+  chunk_type: "metadata" | "implementation";
   content: string;
   content_hash?: string;
   file_path?: string;
@@ -28,7 +28,7 @@ export interface EntityChunk extends Record<string, unknown> {
 }
 
 export interface SearchResult {
-  type: 'chunk';
+  type: "chunk";
   score: number;
   data: EntityChunk;
 }
@@ -44,7 +44,7 @@ export interface SmartGraph {
   structure: {
     // Hierarchical file tree with entity counts
     [path: string]: {
-      type: 'file' | 'directory';
+      type: "file" | "directory";
       entities: number;
       children?: Record<string, any>;
     };
@@ -79,7 +79,7 @@ export interface SmartGraph {
 export interface ScrollOptions {
   entityTypes?: string[];
   limit?: number;
-  mode?: 'smart' | 'entities' | 'relationships' | 'raw';
+  mode?: "smart" | "entities" | "relationships" | "raw";
 }
 
 export interface StreamingGraphResponse {
@@ -116,11 +116,11 @@ export interface SemanticMetadata {
 }
 
 // Design document types
-export type DocType = 'prd' | 'tdd' | 'adr' | 'spec';
+export type DocType = "prd" | "tdd" | "adr" | "spec";
 
 // Search result for design documents
 export interface DocSearchResult {
-  type: 'doc';
+  type: "doc";
   score: number;
   data: {
     id: string;
@@ -151,7 +151,7 @@ export interface DocContent {
   requirements: Array<{
     id: string;
     text: string;
-    type: 'mandatory' | 'recommended' | 'optional' | 'general';
+    type: "mandatory" | "recommended" | "optional" | "general";
     source_section?: string;
   }>;
   metadata: {
@@ -161,12 +161,12 @@ export interface DocContent {
 }
 
 // Ticket integration types (Milestone 8.3)
-export type TicketSource = 'linear' | 'github';
-export type TicketStatus = 'open' | 'in_progress' | 'done' | 'cancelled';
-export type TicketPriority = 'urgent' | 'high' | 'medium' | 'low' | 'none';
+export type TicketSource = "linear" | "github";
+export type TicketStatus = "open" | "in_progress" | "done" | "cancelled";
+export type TicketPriority = "urgent" | "high" | "medium" | "low" | "none";
 
 export interface TicketSearchResult {
-  type: 'ticket';
+  type: "ticket";
   score: number;
   data: {
     id: string;
@@ -210,4 +210,4 @@ export interface TicketContent {
 }
 
 // Re-export Plan Mode types for convenience
-export type { AccessCheckResult } from './plan-mode-guard.js';
+export type { AccessCheckResult } from "./plan-mode-guard.js";

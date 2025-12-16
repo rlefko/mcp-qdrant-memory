@@ -1,5 +1,5 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
-import { Entity, Relation } from "./types.js";
+import type { Entity, Relation } from "./types.js";
 
 export interface CreateEntitiesRequest {
   entities: Entity[];
@@ -41,18 +41,18 @@ export interface SearchSimilarRequest {
   query: string;
   limit?: number;
   entityTypes?: string[];
-  searchMode?: 'semantic' | 'keyword' | 'hybrid';
+  searchMode?: "semantic" | "keyword" | "hybrid";
   collection?: string;
 }
 
 export interface GetImplementationRequest {
   entityName: string;
-  scope?: 'minimal' | 'logical' | 'dependencies';
+  scope?: "minimal" | "logical" | "dependencies";
   collection?: string;
 }
 
 export interface ReadGraphRequest {
-  mode?: 'smart' | 'entities' | 'relationships' | 'raw';
+  mode?: "smart" | "entities" | "relationships" | "raw";
   limit?: number;
   entityTypes?: string[];
   entity?: string;
@@ -61,7 +61,7 @@ export interface ReadGraphRequest {
 
 export interface SearchDocsRequest {
   query: string;
-  docTypes?: ('prd' | 'tdd' | 'adr' | 'spec')[];
+  docTypes?: ("prd" | "tdd" | "adr" | "spec")[];
   limit?: number;
   collection?: string;
 }
@@ -73,32 +73,34 @@ export interface GetDocRequest {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'string');
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function isEntity(value: unknown): value is Entity {
   if (!isRecord(value)) return false;
-  
+
   // Support both entityType (camelCase) and entity_type (snake_case)
   const entityType = (value as any).entityType || (value as any).entity_type;
-  
-  const nameOk = typeof (value as any).name === 'string';
-  const typeOk = typeof entityType === 'string';
-  const obsOk = Array.isArray((value as any).observations) && (value as any).observations.every((obs: any) => typeof obs === 'string');
-  
+
+  const nameOk = typeof (value as any).name === "string";
+  const typeOk = typeof entityType === "string";
+  const obsOk =
+    Array.isArray((value as any).observations) &&
+    (value as any).observations.every((obs: any) => typeof obs === "string");
+
   return nameOk && typeOk && obsOk;
 }
 
 function isRelation(value: unknown): value is Relation {
   if (!isRecord(value)) return false;
   return (
-    typeof value.from === 'string' &&
-    typeof value.to === 'string' &&
-    typeof value.relationType === 'string'
+    typeof value.from === "string" &&
+    typeof value.to === "string" &&
+    typeof value.relationType === "string"
   );
 }
 
@@ -126,11 +128,11 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
     }
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { entities, collection: collection as string | undefined };
+  return { entities, collection: collection };
 }
 
 export function validateCreateRelationsRequest(args: unknown): CreateRelationsRequest {
@@ -143,11 +145,11 @@ export function validateCreateRelationsRequest(args: unknown): CreateRelationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid relations array");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { relations, collection: collection as string | undefined };
+  return { relations, collection: collection };
 }
 
 export function validateAddObservationsRequest(args: unknown): AddObservationsRequest {
@@ -161,16 +163,19 @@ export function validateAddObservationsRequest(args: unknown): AddObservationsRe
   }
 
   for (const obs of observations) {
-    if (!isRecord(obs) || typeof obs.entityName !== 'string' || !isStringArray(obs.contents)) {
+    if (!isRecord(obs) || typeof obs.entityName !== "string" || !isStringArray(obs.contents)) {
       throw new McpError(ErrorCode.InvalidParams, "Invalid observation format");
     }
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { observations: observations as AddObservationsRequest['observations'], collection: collection as string | undefined };
+  return {
+    observations: observations as AddObservationsRequest["observations"],
+    collection: collection,
+  };
 }
 
 export function validateDeleteEntitiesRequest(args: unknown): DeleteEntitiesRequest {
@@ -183,11 +188,11 @@ export function validateDeleteEntitiesRequest(args: unknown): DeleteEntitiesRequ
     throw new McpError(ErrorCode.InvalidParams, "Invalid entityNames array");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { entityNames, collection: collection as string | undefined };
+  return { entityNames, collection: collection };
 }
 
 export function validateDeleteObservationsRequest(args: unknown): DeleteObservationsRequest {
@@ -201,16 +206,19 @@ export function validateDeleteObservationsRequest(args: unknown): DeleteObservat
   }
 
   for (const del of deletions) {
-    if (!isRecord(del) || typeof del.entityName !== 'string' || !isStringArray(del.observations)) {
+    if (!isRecord(del) || typeof del.entityName !== "string" || !isStringArray(del.observations)) {
       throw new McpError(ErrorCode.InvalidParams, "Invalid deletion format");
     }
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { deletions: deletions as DeleteObservationsRequest['deletions'], collection: collection as string | undefined };
+  return {
+    deletions: deletions as DeleteObservationsRequest["deletions"],
+    collection: collection,
+  };
 }
 
 export function validateDeleteRelationsRequest(args: unknown): DeleteRelationsRequest {
@@ -223,11 +231,11 @@ export function validateDeleteRelationsRequest(args: unknown): DeleteRelationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid relations array");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { relations, collection: collection as string | undefined };
+  return { relations, collection: collection };
 }
 
 export function validateSearchSimilarRequest(args: unknown): SearchSimilarRequest {
@@ -236,33 +244,42 @@ export function validateSearchSimilarRequest(args: unknown): SearchSimilarReques
   }
 
   const { query, entityTypes, limit, searchMode } = args;
-  if (typeof query !== 'string') {
+  if (typeof query !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid query string");
   }
 
-  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+  if (limit !== undefined && (typeof limit !== "number" || limit <= 0)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
   }
 
   if (entityTypes !== undefined) {
-    if (!Array.isArray(entityTypes) || !entityTypes.every(t => typeof t === 'string')) {
+    if (!Array.isArray(entityTypes) || !entityTypes.every((t) => typeof t === "string")) {
       throw new McpError(ErrorCode.InvalidParams, "entityTypes must be array of strings");
     }
   }
 
-  const validSearchModes = ['semantic', 'keyword', 'hybrid'];
+  const validSearchModes = ["semantic", "keyword", "hybrid"];
   if (searchMode !== undefined) {
-    if (typeof searchMode !== 'string' || !validSearchModes.includes(searchMode)) {
-      throw new McpError(ErrorCode.InvalidParams, "searchMode must be one of: semantic, keyword, hybrid");
+    if (typeof searchMode !== "string" || !validSearchModes.includes(searchMode)) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "searchMode must be one of: semantic, keyword, hybrid"
+      );
     }
   }
 
   const { collection } = args;
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { query, entityTypes, limit, searchMode: searchMode as 'semantic' | 'keyword' | 'hybrid' | undefined, collection: collection as string | undefined };
+  return {
+    query,
+    entityTypes,
+    limit,
+    searchMode: searchMode as "semantic" | "keyword" | "hybrid" | undefined,
+    collection: collection,
+  };
 }
 
 export function validateGetImplementationRequest(args: unknown): GetImplementationRequest {
@@ -273,27 +290,30 @@ export function validateGetImplementationRequest(args: unknown): GetImplementati
   // Support both camelCase and snake_case parameter names for compatibility
   const { entityName, entity_name, scope } = args;
   const finalEntityName = entityName || entity_name;
-  
-  if (typeof finalEntityName !== 'string') {
+
+  if (typeof finalEntityName !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid entityName string");
   }
 
-  const validScopes = ['minimal', 'logical', 'dependencies'];
-  const finalScope = scope || 'minimal';
-  
-  if (typeof finalScope !== 'string' || !validScopes.includes(finalScope)) {
-    throw new McpError(ErrorCode.InvalidParams, "Invalid scope. Must be: minimal, logical, or dependencies");
+  const validScopes = ["minimal", "logical", "dependencies"];
+  const finalScope = scope || "minimal";
+
+  if (typeof finalScope !== "string" || !validScopes.includes(finalScope)) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      "Invalid scope. Must be: minimal, logical, or dependencies"
+    );
   }
 
   const { collection } = args;
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
   return {
     entityName: finalEntityName,
-    scope: finalScope as 'minimal' | 'logical' | 'dependencies',
-    collection: collection as string | undefined
+    scope: finalScope as "minimal" | "logical" | "dependencies",
+    collection: collection,
   };
 }
 
@@ -304,37 +324,40 @@ export function validateReadGraphRequest(args: unknown): ReadGraphRequest {
 
   const { mode, limit, entityTypes, entity, collection } = args;
 
-  const validModes = ['smart', 'entities', 'relationships', 'raw'];
+  const validModes = ["smart", "entities", "relationships", "raw"];
   if (mode !== undefined) {
-    if (typeof mode !== 'string' || !validModes.includes(mode)) {
-      throw new McpError(ErrorCode.InvalidParams, "mode must be one of: smart, entities, relationships, raw");
+    if (typeof mode !== "string" || !validModes.includes(mode)) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        "mode must be one of: smart, entities, relationships, raw"
+      );
     }
   }
 
-  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+  if (limit !== undefined && (typeof limit !== "number" || limit <= 0)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
   }
 
   if (entityTypes !== undefined) {
-    if (!Array.isArray(entityTypes) || !entityTypes.every(t => typeof t === 'string')) {
+    if (!Array.isArray(entityTypes) || !entityTypes.every((t) => typeof t === "string")) {
       throw new McpError(ErrorCode.InvalidParams, "entityTypes must be array of strings");
     }
   }
 
-  if (entity !== undefined && typeof entity !== 'string') {
+  if (entity !== undefined && typeof entity !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "entity must be a string");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
   return {
-    mode: mode as 'smart' | 'entities' | 'relationships' | 'raw' | undefined,
-    limit: limit as number | undefined,
-    entityTypes: entityTypes as string[] | undefined,
-    entity: entity as string | undefined,
-    collection: collection as string | undefined
+    mode: mode as "smart" | "entities" | "relationships" | "raw" | undefined,
+    limit: limit,
+    entityTypes: entityTypes,
+    entity: entity,
+    collection: collection,
   };
 }
 
@@ -345,26 +368,29 @@ export function validateSearchDocsRequest(args: unknown): SearchDocsRequest {
 
   const { query, docTypes, limit, collection } = args;
 
-  if (typeof query !== 'string' || query.trim().length === 0) {
+  if (typeof query !== "string" || query.trim().length === 0) {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid query string");
   }
 
-  const validDocTypes = ['prd', 'tdd', 'adr', 'spec'];
+  const validDocTypes = ["prd", "tdd", "adr", "spec"];
   if (docTypes !== undefined) {
-    if (!Array.isArray(docTypes) || !docTypes.every(t => typeof t === 'string' && validDocTypes.includes(t))) {
+    if (
+      !Array.isArray(docTypes) ||
+      !docTypes.every((t) => typeof t === "string" && validDocTypes.includes(t))
+    ) {
       throw new McpError(ErrorCode.InvalidParams, "docTypes must be array of: prd, tdd, adr, spec");
     }
   }
 
-  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+  if (limit !== undefined && (typeof limit !== "number" || limit <= 0)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
-  return { query, docTypes: docTypes as SearchDocsRequest['docTypes'], limit, collection };
+  return { query, docTypes: docTypes as SearchDocsRequest["docTypes"], limit, collection };
 }
 
 export function validateGetDocRequest(args: unknown): GetDocRequest {
@@ -374,15 +400,15 @@ export function validateGetDocRequest(args: unknown): GetDocRequest {
 
   const { docId, section, collection } = args;
 
-  if (typeof docId !== 'string' || docId.trim().length === 0) {
+  if (typeof docId !== "string" || docId.trim().length === 0) {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid docId string");
   }
 
-  if (section !== undefined && typeof section !== 'string') {
+  if (section !== undefined && typeof section !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "section must be a string");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
@@ -392,9 +418,9 @@ export function validateGetDocRequest(args: unknown): GetDocRequest {
 // Ticket integration types (Milestone 8.3)
 export interface SearchTicketsRequest {
   query?: string;
-  status?: ('open' | 'in_progress' | 'done' | 'cancelled')[];
+  status?: ("open" | "in_progress" | "done" | "cancelled")[];
   labels?: string[];
-  source?: ('linear' | 'github')[];
+  source?: ("linear" | "github")[];
   limit?: number;
   collection?: string;
 }
@@ -415,48 +441,63 @@ export function validateSearchTicketsRequest(args: unknown): SearchTicketsReques
 
   // At least one search parameter required
   if (!query && !status && !labels && !source) {
-    throw new McpError(ErrorCode.InvalidParams, "At least one search parameter required (query, status, labels, or source)");
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      "At least one search parameter required (query, status, labels, or source)"
+    );
   }
 
-  if (query !== undefined && typeof query !== 'string') {
+  if (query !== undefined && typeof query !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "query must be a string");
   }
 
-  const validStatuses = ['open', 'in_progress', 'done', 'cancelled'];
+  const validStatuses = ["open", "in_progress", "done", "cancelled"];
   if (status !== undefined) {
-    if (!Array.isArray(status) || !status.every(s => typeof s === 'string' && validStatuses.includes(s))) {
-      throw new McpError(ErrorCode.InvalidParams, `status must be array of: ${validStatuses.join(', ')}`);
+    if (
+      !Array.isArray(status) ||
+      !status.every((s) => typeof s === "string" && validStatuses.includes(s))
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `status must be array of: ${validStatuses.join(", ")}`
+      );
     }
   }
 
   if (labels !== undefined) {
-    if (!Array.isArray(labels) || !labels.every(l => typeof l === 'string')) {
+    if (!Array.isArray(labels) || !labels.every((l) => typeof l === "string")) {
       throw new McpError(ErrorCode.InvalidParams, "labels must be array of strings");
     }
   }
 
-  const validSources = ['linear', 'github'];
+  const validSources = ["linear", "github"];
   if (source !== undefined) {
-    if (!Array.isArray(source) || !source.every(s => typeof s === 'string' && validSources.includes(s))) {
-      throw new McpError(ErrorCode.InvalidParams, `source must be array of: ${validSources.join(', ')}`);
+    if (
+      !Array.isArray(source) ||
+      !source.every((s) => typeof s === "string" && validSources.includes(s))
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `source must be array of: ${validSources.join(", ")}`
+      );
     }
   }
 
-  if (limit !== undefined && (typeof limit !== 'number' || limit <= 0)) {
+  if (limit !== undefined && (typeof limit !== "number" || limit <= 0)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid limit value");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
   return {
-    query: query as string | undefined,
-    status: status as SearchTicketsRequest['status'],
-    labels: labels as string[] | undefined,
-    source: source as SearchTicketsRequest['source'],
-    limit: limit as number | undefined,
-    collection: collection as string | undefined
+    query: query,
+    status: status as SearchTicketsRequest["status"],
+    labels: labels,
+    source: source as SearchTicketsRequest["source"],
+    limit: limit,
+    collection: collection,
   };
 }
 
@@ -467,27 +508,27 @@ export function validateGetTicketRequest(args: unknown): GetTicketRequest {
 
   const { ticketId, includeComments, includePRs, collection } = args;
 
-  if (typeof ticketId !== 'string' || ticketId.trim().length === 0) {
+  if (typeof ticketId !== "string" || ticketId.trim().length === 0) {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid ticketId string");
   }
 
-  if (includeComments !== undefined && typeof includeComments !== 'boolean') {
+  if (includeComments !== undefined && typeof includeComments !== "boolean") {
     throw new McpError(ErrorCode.InvalidParams, "includeComments must be a boolean");
   }
 
-  if (includePRs !== undefined && typeof includePRs !== 'boolean') {
+  if (includePRs !== undefined && typeof includePRs !== "boolean") {
     throw new McpError(ErrorCode.InvalidParams, "includePRs must be a boolean");
   }
 
-  if (collection !== undefined && typeof collection !== 'string') {
+  if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
 
   return {
     ticketId,
-    includeComments: includeComments as boolean | undefined,
-    includePRs: includePRs as boolean | undefined,
-    collection: collection as string | undefined
+    includeComments: includeComments,
+    includePRs: includePRs,
+    collection: collection,
   };
 }
 
@@ -502,7 +543,7 @@ export function validateSetPlanModeRequest(args: unknown): SetPlanModeRequest {
   }
 
   const { enabled } = args;
-  if (typeof enabled !== 'boolean') {
+  if (typeof enabled !== "boolean") {
     throw new McpError(ErrorCode.InvalidParams, "enabled must be a boolean");
   }
 

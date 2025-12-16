@@ -28,13 +28,13 @@ graph LR
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Hybrid Search** | BM25 + semantic search with RRF fusion |
-| **Progressive Disclosure** | Metadata-first responses, details on-demand |
-| **Multi-Collection** | Work with multiple projects simultaneously |
-| **Token Management** | 25k token compliance with auto-reduction |
-| **Entity-Specific Filtering** | Focus on individual components |
+| Feature                       | Description                                 |
+| ----------------------------- | ------------------------------------------- |
+| **Hybrid Search**             | BM25 + semantic search with RRF fusion      |
+| **Progressive Disclosure**    | Metadata-first responses, details on-demand |
+| **Multi-Collection**          | Work with multiple projects simultaneously  |
+| **Token Management**          | 25k token compliance with auto-reduction    |
+| **Entity-Specific Filtering** | Focus on individual components              |
 
 ---
 
@@ -107,11 +107,11 @@ search_similar({
 
 **Search Modes:**
 
-| Mode | Best For | Score Range |
-|------|----------|-------------|
-| `hybrid` (default) | General queries | 0.4-1.2 |
-| `semantic` | Conceptual searches | 0.6-0.8 |
-| `keyword` | Exact identifiers | 1.5+ |
+| Mode               | Best For            | Score Range |
+| ------------------ | ------------------- | ----------- |
+| `hybrid` (default) | General queries     | 0.4-1.2     |
+| `semantic`         | Conceptual searches | 0.6-0.8     |
+| `keyword`          | Exact identifiers   | 1.5+        |
 
 **Examples:**
 
@@ -143,12 +143,12 @@ read_graph({
 
 **Modes:**
 
-| Mode | Description | Token Usage |
-|------|-------------|-------------|
-| `smart` | AI-optimized summary | <25k |
-| `entities` | Entity list only | ~10k |
-| `relationships` | Relations only | ~5k |
-| `raw` | Complete data | May exceed limits |
+| Mode            | Description          | Token Usage       |
+| --------------- | -------------------- | ----------------- |
+| `smart`         | AI-optimized summary | <25k              |
+| `entities`      | Entity list only     | ~10k              |
+| `relationships` | Relations only       | ~5k               |
+| `raw`           | Complete data        | May exceed limits |
 
 **Examples:**
 
@@ -178,11 +178,11 @@ get_implementation({
 
 **Scopes:**
 
-| Scope | Returns | Token Usage |
-|-------|---------|-------------|
-| `minimal` | Just the entity | ~500-2k |
-| `logical` | Entity + same-file helpers | ~2k-5k |
-| `dependencies` | Entity + imported modules | ~5k-15k |
+| Scope          | Returns                    | Token Usage |
+| -------------- | -------------------------- | ----------- |
+| `minimal`      | Just the entity            | ~500-2k     |
+| `logical`      | Entity + same-file helpers | ~2k-5k      |
+| `dependencies` | Entity + imported modules  | ~5k-15k     |
 
 **Examples:**
 
@@ -292,12 +292,12 @@ docker run -d \
 
 ## Performance
 
-| Operation | Latency | Notes |
-|-----------|---------|-------|
-| Metadata search | 3-5ms | Fast scanning |
-| Hybrid search | 30-50ms | Full search |
-| Smart graph | 100-200ms | Token-optimized |
-| Implementation | 50-100ms | Depends on scope |
+| Operation       | Latency   | Notes            |
+| --------------- | --------- | ---------------- |
+| Metadata search | 3-5ms     | Fast scanning    |
+| Hybrid search   | 30-50ms   | Full search      |
+| Smart graph     | 100-200ms | Token-optimized  |
+| Implementation  | 50-100ms  | Depends on scope |
 
 ---
 

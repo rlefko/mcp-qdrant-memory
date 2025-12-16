@@ -148,9 +148,7 @@ export class MockQdrantClient {
     };
   }
 
-  async getCollection(
-    collectionName: string
-  ): Promise<{ config: MockCollection["config"] }> {
+  async getCollection(collectionName: string): Promise<{ config: MockCollection["config"] }> {
     this.checkFailure();
     const collection = this.collections.get(collectionName);
     if (!collection) {
@@ -183,10 +181,7 @@ export class MockQdrantClient {
     return true;
   }
 
-  async scroll(
-    collectionName: string,
-    params: ScrollParams
-  ): Promise<ScrollResult> {
+  async scroll(collectionName: string, params: ScrollParams): Promise<ScrollResult> {
     this.checkFailure();
     const collection = this.getOrCreateCollection(collectionName);
     const limit = params.limit ?? 10;
@@ -302,10 +297,7 @@ export class MockQdrantClient {
     }
 
     if (params.filter) {
-      const toDelete = this.applyFilter(
-        Array.from(collection.points.values()),
-        params.filter
-      );
+      const toDelete = this.applyFilter(Array.from(collection.points.values()), params.filter);
       for (const point of toDelete) {
         collection.points.delete(point.id);
       }
@@ -354,10 +346,7 @@ export class MockQdrantClient {
     return points;
   }
 
-  private applySingleCondition(
-    points: MockPoint[],
-    condition: unknown
-  ): MockPoint[] {
+  private applySingleCondition(points: MockPoint[], condition: unknown): MockPoint[] {
     if (!condition || typeof condition !== "object") return points;
 
     const cond = condition as Record<string, unknown>;

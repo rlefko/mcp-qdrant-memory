@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 // Console override temporarily disabled - breaks MCP server startup
@@ -17,12 +17,24 @@ import {
 // import { promises as fs } from 'fs'; // Removed: No longer using file system for JSON storage
 // import path from 'path'; // Removed: No longer needed for file paths
 // import { fileURLToPath } from 'url'; // Removed: No longer needed for file paths
-import { QdrantPersistence } from './persistence/qdrant.js';
-import { Entity, Relation, KnowledgeGraph, SmartGraph, ScrollOptions, StreamingGraphResponse, SearchResult, DocSearchResult, DocContent, TicketSearchResult, TicketContent } from './types.js';
-import { streamingResponseBuilder } from './streamingResponseBuilder.js';
-import { tokenCounter, TOKEN_CONFIG } from './tokenCounter.js';
-import { COLLECTION_NAME } from './config.js';
-import { BM25Service } from './bm25/bm25Service.js';
+import { QdrantPersistence } from "./persistence/qdrant.js";
+import type {
+  Entity,
+  Relation,
+  KnowledgeGraph,
+  SmartGraph,
+  ScrollOptions,
+  SearchResult,
+  DocSearchResult,
+  DocContent,
+  TicketSearchResult,
+  TicketContent,
+} from "./types.js";
+import { StreamingGraphResponse } from "./types.js";
+import { streamingResponseBuilder } from "./streamingResponseBuilder.js";
+import { tokenCounter, TOKEN_CONFIG } from "./tokenCounter.js";
+import { COLLECTION_NAME } from "./config.js";
+import { BM25Service } from "./bm25/bm25Service.js";
 import {
   validateCreateEntitiesRequest,
   validateCreateRelationsRequest,
@@ -38,8 +50,8 @@ import {
   validateSearchTicketsRequest,
   validateGetTicketRequest,
   validateSetPlanModeRequest,
-} from './validation.js';
-import { PlanModeGuard } from './plan-mode-guard.js';
+} from "./validation.js";
+import { PlanModeGuard } from "./plan-mode-guard.js";
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
 
@@ -63,7 +75,6 @@ class KnowledgeGraphManager {
     await this.qdrant.initializeBM25Index(collection);
   }
 
-
   // async save(): Promise<void> {
   //   await fs.writeFile(MEMORY_FILE_PATH, JSON.stringify(this.graph, null, 2));
   // } // Removed: JSON file writing disabled
@@ -78,13 +89,18 @@ class KnowledgeGraphManager {
 
   async addRelations(relations: Relation[], collection?: string): Promise<void> {
     // Load current entities from Qdrant for validation with unlimited limit
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+    const currentGraph = await this.getRawGraph(
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      "raw",
+      collection
+    );
 
     for (const relation of relations) {
-      if (!currentGraph.entities.some(e => e.name === relation.from)) {
+      if (!currentGraph.entities.some((e) => e.name === relation.from)) {
         throw new Error(`Entity not found: ${relation.from}`);
       }
-      if (!currentGraph.entities.some(e => e.name === relation.to)) {
+      if (!currentGraph.entities.some((e) => e.name === relation.to)) {
         throw new Error(`Entity not found: ${relation.to}`);
       }
 
@@ -94,9 +110,18 @@ class KnowledgeGraphManager {
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async addObservations(entityName: string, observations: string[], collection?: string): Promise<void> {
+  async addObservations(
+    entityName: string,
+    observations: string[],
+    collection?: string
+  ): Promise<void> {
     // Load current entities from Qdrant with unlimited limit for entity lookups
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+    const currentGraph = await this.getRawGraph(
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      "raw",
+      collection
+    );
     const entity = currentGraph.entities.find((e: Entity) => e.name === entityName);
     if (!entity) {
       throw new Error(`Entity not found: ${entityName}`);
@@ -108,7 +133,12 @@ class KnowledgeGraphManager {
 
   async deleteEntities(entityNames: string[], collection?: string): Promise<void> {
     // Load current graph to find related relations with unlimited limit
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+    const currentGraph = await this.getRawGraph(
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      "raw",
+      collection
+    );
 
     for (const name of entityNames) {
       // Delete the entity
@@ -125,14 +155,25 @@ class KnowledgeGraphManager {
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async deleteObservations(entityName: string, observations: string[], collection?: string): Promise<void> {
+  async deleteObservations(
+    entityName: string,
+    observations: string[],
+    collection?: string
+  ): Promise<void> {
     // Load current entities from Qdrant with unlimited limit for entity lookups
-    const currentGraph = await this.getRawGraph(Number.MAX_SAFE_INTEGER, undefined, 'raw', collection);
+    const currentGraph = await this.getRawGraph(
+      Number.MAX_SAFE_INTEGER,
+      undefined,
+      "raw",
+      collection
+    );
     const entity = currentGraph.entities.find((e: Entity) => e.name === entityName);
     if (!entity) {
       throw new Error(`Entity not found: ${entityName}`);
     }
-    entity.observations = (entity.observations || []).filter((o: string) => !observations.includes(o));
+    entity.observations = (entity.observations || []).filter(
+      (o: string) => !observations.includes(o)
+    );
     await this.qdrant.persistEntity(entity, collection);
     // await this.save(); // Removed: JSON file writing disabled
   }
@@ -145,46 +186,75 @@ class KnowledgeGraphManager {
     // await this.save(); // Removed: JSON file writing disabled
   }
 
-  async getGraph(options?: ScrollOptions, collection?: string): Promise<KnowledgeGraph | SmartGraph> {
+  async getGraph(
+    options?: ScrollOptions,
+    collection?: string
+  ): Promise<KnowledgeGraph | SmartGraph> {
     try {
       return await this.qdrant.scrollAll(options, collection);
     } catch (error) {
-      console.error('Failed to read from Qdrant:', error);
+      console.error("Failed to read from Qdrant:", error);
       // Return empty graph on error
       return { entities: [], relations: [] };
     }
   }
 
-  async getRawGraph(limit?: number, entityTypes?: string[], mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'raw', collection?: string): Promise<KnowledgeGraph> {
+  async getRawGraph(
+    limit?: number,
+    entityTypes?: string[],
+    mode: "smart" | "entities" | "relationships" | "raw" = "raw",
+    collection?: string
+  ): Promise<KnowledgeGraph> {
     try {
       // Get limited raw entities and relations from Qdrant for streaming processing
       const rawData = await this.qdrant.scrollAll({ mode, limit, entityTypes }, collection);
-      if ('entities' in rawData && 'relations' in rawData) {
-        return rawData as KnowledgeGraph;
+      if ("entities" in rawData && "relations" in rawData) {
+        return rawData;
       }
       // If it's not a KnowledgeGraph (e.g., SmartGraph), return empty
       return { entities: [], relations: [] };
     } catch (error) {
-      console.error('Failed to read raw graph from Qdrant:', error);
+      console.error("Failed to read raw graph from Qdrant:", error);
       return { entities: [], relations: [] };
     }
   }
 
-  async searchSimilar(query: string, entityTypes?: string[], limit: number = 20, searchMode: 'semantic' | 'keyword' | 'hybrid' = 'semantic', collection?: string): Promise<SearchResult[]> {
+  async searchSimilar(
+    query: string,
+    entityTypes?: string[],
+    limit: number = 20,
+    searchMode: "semantic" | "keyword" | "hybrid" = "semantic",
+    collection?: string
+  ): Promise<SearchResult[]> {
     // Ensure limit is a positive number, no hard cap
     const validLimit = Math.max(1, limit);
     return await this.qdrant.searchSimilar(query, entityTypes, validLimit, searchMode, collection);
   }
 
-  async getImplementation(entityName: string, scope: 'minimal' | 'logical' | 'dependencies' = 'minimal', limit?: number, collection?: string): Promise<SearchResult[]> {
+  async getImplementation(
+    entityName: string,
+    scope: "minimal" | "logical" | "dependencies" = "minimal",
+    limit?: number,
+    collection?: string
+  ): Promise<SearchResult[]> {
     return await this.qdrant.getImplementationChunks(entityName, scope, limit, collection);
   }
 
-  async getEntitySpecificGraph(entityName: string, mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'smart', limit?: number, collection?: string): Promise<any> {
+  async getEntitySpecificGraph(
+    entityName: string,
+    mode: "smart" | "entities" | "relationships" | "raw" = "smart",
+    limit?: number,
+    collection?: string
+  ): Promise<any> {
     return await this.qdrant.getEntitySpecificGraph(entityName, mode, limit, collection);
   }
 
-  async searchDocs(query: string, docTypes?: string[], limit: number = 10, collection?: string): Promise<DocSearchResult[]> {
+  async searchDocs(
+    query: string,
+    docTypes?: string[],
+    limit: number = 10,
+    collection?: string
+  ): Promise<DocSearchResult[]> {
     return await this.qdrant.searchDocs(query, docTypes, limit, collection);
   }
 
@@ -262,19 +332,19 @@ class MemoryServer {
                     entityType: { type: "string" },
                     observations: {
                       type: "array",
-                      items: { type: "string" }
-                    }
+                      items: { type: "string" },
+                    },
                   },
-                  required: ["name", "entityType", "observations"]
-                }
+                  required: ["name", "entityType", "observations"],
+                },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["entities"]
-          }
+            required: ["entities"],
+          },
         },
         {
           name: "create_relations",
@@ -289,18 +359,18 @@ class MemoryServer {
                   properties: {
                     from: { type: "string" },
                     to: { type: "string" },
-                    relationType: { type: "string" }
+                    relationType: { type: "string" },
                   },
-                  required: ["from", "to", "relationType"]
-                }
+                  required: ["from", "to", "relationType"],
+                },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["relations"]
-          }
+            required: ["relations"],
+          },
         },
         {
           name: "add_observations",
@@ -316,19 +386,19 @@ class MemoryServer {
                     entityName: { type: "string" },
                     contents: {
                       type: "array",
-                      items: { type: "string" }
-                    }
+                      items: { type: "string" },
+                    },
                   },
-                  required: ["entityName", "contents"]
-                }
+                  required: ["entityName", "contents"],
+                },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["observations"]
-          }
+            required: ["observations"],
+          },
         },
         {
           name: "delete_entities",
@@ -338,15 +408,15 @@ class MemoryServer {
             properties: {
               entityNames: {
                 type: "array",
-                items: { type: "string" }
+                items: { type: "string" },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["entityNames"]
-          }
+            required: ["entityNames"],
+          },
         },
         {
           name: "delete_observations",
@@ -362,19 +432,19 @@ class MemoryServer {
                     entityName: { type: "string" },
                     observations: {
                       type: "array",
-                      items: { type: "string" }
-                    }
+                      items: { type: "string" },
+                    },
                   },
-                  required: ["entityName", "observations"]
-                }
+                  required: ["entityName", "observations"],
+                },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["deletions"]
-          }
+            required: ["deletions"],
+          },
         },
         {
           name: "delete_relations",
@@ -389,18 +459,18 @@ class MemoryServer {
                   properties: {
                     from: { type: "string" },
                     to: { type: "string" },
-                    relationType: { type: "string" }
+                    relationType: { type: "string" },
                   },
-                  required: ["from", "to", "relationType"]
-                }
+                  required: ["from", "to", "relationType"],
+                },
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["relations"]
-          }
+            required: ["relations"],
+          },
         },
         {
           name: "read_graph",
@@ -411,33 +481,35 @@ class MemoryServer {
               mode: {
                 type: "string",
                 enum: ["smart", "entities", "relationships", "raw"],
-                description: "smart: AI-optimized view (default), entities: filtered entities, relationships: connection focus, raw: full graph (may exceed limits)",
-                default: "smart"
+                description:
+                  "smart: AI-optimized view (default), entities: filtered entities, relationships: connection focus, raw: full graph (may exceed limits)",
+                default: "smart",
               },
               entityTypes: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter specific entity types (e.g., ['class', 'function'])"
+                description: "Filter specific entity types (e.g., ['class', 'function'])",
               },
               entity: {
                 type: "string",
-                description: "Optional: Specific entity name to center the graph around"
+                description: "Optional: Specific entity name to center the graph around",
               },
               limit: {
                 type: "number",
                 description: "Max entities per type (default: 150)",
-                default: 150
+                default: 150,
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
-            }
-          }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
+            },
+          },
         },
         {
           name: "search_similar",
-          description: "Search for similar entities and relations using semantic search with progressive disclosure support",
+          description:
+            "Search for similar entities and relations using semantic search with progressive disclosure support",
           inputSchema: {
             type: "object",
             properties: {
@@ -445,25 +517,27 @@ class MemoryServer {
               entityTypes: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter by entity types: class, function, file, documentation, debugging_pattern, etc."
+                description:
+                  "Filter by entity types: class, function, file, documentation, debugging_pattern, etc.",
               },
               limit: {
                 type: "number",
-                default: 20
+                default: 20,
               },
               searchMode: {
                 type: "string",
                 enum: ["semantic", "keyword", "hybrid"],
-                description: "Search mode: semantic (dense vectors), keyword (sparse vectors), hybrid (combined). Defaults to hybrid.",
-                default: "hybrid"
+                description:
+                  "Search mode: semantic (dense vectors), keyword (sparse vectors), hybrid (combined). Defaults to hybrid.",
+                default: "hybrid",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["query"]
-          }
+            required: ["query"],
+          },
         },
         {
           name: "get_implementation",
@@ -473,21 +547,22 @@ class MemoryServer {
             properties: {
               entityName: {
                 type: "string",
-                description: "Name of the entity to retrieve"
+                description: "Name of the entity to retrieve",
               },
               scope: {
                 type: "string",
                 enum: ["minimal", "logical", "dependencies"],
                 default: "minimal",
-                description: "Scope of related code to include: minimal (entity only), logical (same-file helpers), dependencies (imports and calls)"
+                description:
+                  "Scope of related code to include: minimal (entity only), logical (same-file helpers), dependencies (imports and calls)",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["entityName"]
-          }
+            required: ["entityName"],
+          },
         },
         {
           name: "search_docs",
@@ -497,47 +572,49 @@ class MemoryServer {
             properties: {
               query: {
                 type: "string",
-                description: "Search query for finding relevant design documents"
+                description: "Search query for finding relevant design documents",
               },
               docTypes: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter by document types: prd, tdd, adr, spec. If omitted, searches all types."
+                description:
+                  "Filter by document types: prd, tdd, adr, spec. If omitted, searches all types.",
               },
               limit: {
                 type: "number",
                 default: 10,
-                description: "Maximum number of documents to return"
+                description: "Maximum number of documents to return",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["query"]
-          }
+            required: ["query"],
+          },
         },
         {
           name: "get_doc",
-          description: "Retrieve full content of a specific design document with its sections and requirements",
+          description:
+            "Retrieve full content of a specific design document with its sections and requirements",
           inputSchema: {
             type: "object",
             properties: {
               docId: {
                 type: "string",
-                description: "Document ID (entity_name like 'PRD: Feature Title') or file path"
+                description: "Document ID (entity_name like 'PRD: Feature Title') or file path",
               },
               section: {
                 type: "string",
-                description: "Optional: filter to specific section by name"
+                description: "Optional: filter to specific section by name",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["docId"]
-          }
+            required: ["docId"],
+          },
         },
         {
           name: "search_tickets",
@@ -547,34 +624,34 @@ class MemoryServer {
             properties: {
               query: {
                 type: "string",
-                description: "Search query for ticket title/description"
+                description: "Search query for ticket title/description",
               },
               status: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter by status: open, in_progress, done, cancelled"
+                description: "Filter by status: open, in_progress, done, cancelled",
               },
               labels: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter by labels"
+                description: "Filter by labels",
               },
               source: {
                 type: "array",
                 items: { type: "string" },
-                description: "Filter by source: linear, github"
+                description: "Filter by source: linear, github",
               },
               limit: {
                 type: "number",
                 default: 20,
-                description: "Maximum number of tickets to return"
+                description: "Maximum number of tickets to return",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
-            }
-          }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
+            },
+          },
         },
         {
           name: "get_ticket",
@@ -584,49 +661,48 @@ class MemoryServer {
             properties: {
               ticketId: {
                 type: "string",
-                description: "Ticket ID (e.g., AVO-123 for Linear, owner/repo#456 for GitHub)"
+                description: "Ticket ID (e.g., AVO-123 for Linear, owner/repo#456 for GitHub)",
               },
               includeComments: {
                 type: "boolean",
                 default: true,
-                description: "Include ticket comments"
+                description: "Include ticket comments",
               },
               includePRs: {
                 type: "boolean",
                 default: true,
-                description: "Include linked pull requests"
+                description: "Include linked pull requests",
               },
               collection: {
                 type: "string",
-                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var."
-              }
+                description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
             },
-            required: ["ticketId"]
-          }
+            required: ["ticketId"],
+          },
         },
         {
           name: "set_plan_mode",
-          description: "Enable or disable Plan Mode. When enabled, only read-only operations are allowed (search, read, get). Write operations (create, delete, add) are blocked to prevent accidental modifications during planning.",
+          description:
+            "Enable or disable Plan Mode. When enabled, only read-only operations are allowed (search, read, get). Write operations (create, delete, add) are blocked to prevent accidental modifications during planning.",
           inputSchema: {
             type: "object",
             properties: {
               enabled: {
                 type: "boolean",
-                description: "true to enable Plan Mode (read-only), false to disable and allow all operations"
-              }
+                description:
+                  "true to enable Plan Mode (read-only), false to disable and allow all operations",
+              },
             },
-            required: ["enabled"]
-          }
-        }
+            required: ["enabled"],
+          },
+        },
       ],
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
       if (!request.params.arguments) {
-        throw new McpError(
-          ErrorCode.InvalidParams,
-          "Missing arguments"
-        );
+        throw new McpError(ErrorCode.InvalidParams, "Missing arguments");
       }
 
       // Plan Mode access control check (Milestone 8.4)
@@ -636,14 +712,14 @@ class MemoryServer {
         throw new McpError(
           ErrorCode.InvalidRequest,
           `Plan Mode Access Denied: ${accessCheck.reason}. ` +
-          `Blocked tools: ${blockedTools.join(", ")}. ` +
-          `Use set_plan_mode({ enabled: false }) to exit Plan Mode.`
+            `Blocked tools: ${blockedTools.join(", ")}. ` +
+            `Use set_plan_mode({ enabled: false }) to exit Plan Mode.`
         );
       }
 
       try {
         let response: any;
-        
+
         switch (request.params.name) {
           case "create_entities": {
             const args = validateCreateEntitiesRequest(request.params.arguments);
@@ -665,7 +741,11 @@ class MemoryServer {
           case "add_observations": {
             const args = validateAddObservationsRequest(request.params.arguments);
             for (const obs of args.observations) {
-              await this.graphManager.addObservations(obs.entityName, obs.contents, args.collection);
+              await this.graphManager.addObservations(
+                obs.entityName,
+                obs.contents,
+                args.collection
+              );
             }
             return {
               content: [{ type: "text", text: "Observations added successfully" }],
@@ -683,7 +763,11 @@ class MemoryServer {
           case "delete_observations": {
             const args = validateDeleteObservationsRequest(request.params.arguments);
             for (const del of args.deletions) {
-              await this.graphManager.deleteObservations(del.entityName, del.observations, args.collection);
+              await this.graphManager.deleteObservations(
+                del.entityName,
+                del.observations,
+                args.collection
+              );
             }
             return {
               content: [{ type: "text", text: "Observations deleted successfully" }],
@@ -700,7 +784,7 @@ class MemoryServer {
 
           case "read_graph": {
             const args = validateReadGraphRequest(request.params.arguments);
-            const mode = args.mode || 'smart';
+            const mode = args.mode || "smart";
             const entityTypes = args.entityTypes;
             const entity = args.entity;
             const limit = args.limit || 150;
@@ -709,18 +793,20 @@ class MemoryServer {
             // Handle entity-specific graph
             if (entity) {
               // Auto-cut: Exponential backoff if response exceeds 25k tokens
-              let finalResponse = await this.autoReduceResponse(
-                async (tryLimit: number) => {
-                  const entityGraph = await this.graphManager.getEntitySpecificGraph(entity, mode, tryLimit, collection);
-                  const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
-                  return await streamingResponseBuilder.buildStreamingResponse(
-                    entityGraph.entities || [],
-                    entityGraph.relations || [],
-                    options
-                  );
-                },
-                limit
-              );
+              const finalResponse = await this.autoReduceResponse(async (tryLimit: number) => {
+                const entityGraph = await this.graphManager.getEntitySpecificGraph(
+                  entity,
+                  mode,
+                  tryLimit,
+                  collection
+                );
+                const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
+                return await streamingResponseBuilder.buildStreamingResponse(
+                  entityGraph.entities || [],
+                  entityGraph.relations || [],
+                  options
+                );
+              }, limit);
 
               const fullResponse = JSON.stringify(finalResponse);
 
@@ -738,22 +824,24 @@ class MemoryServer {
             const options: ScrollOptions = {
               mode,
               entityTypes,
-              limit
+              limit,
             };
 
             // Auto-cut: Exponential backoff if response exceeds 25k tokens
-            const finalResponse = await this.autoReduceResponse(
-              async (tryLimit: number) => {
-                const rawGraph = await this.graphManager.getRawGraph(tryLimit, entityTypes, mode, collection);
-                const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
-                return await streamingResponseBuilder.buildStreamingResponse(
-                  rawGraph.entities,
-                  rawGraph.relations,
-                  options
-                );
-              },
-              limit
-            );
+            const finalResponse = await this.autoReduceResponse(async (tryLimit: number) => {
+              const rawGraph = await this.graphManager.getRawGraph(
+                tryLimit,
+                entityTypes,
+                mode,
+                collection
+              );
+              const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
+              return await streamingResponseBuilder.buildStreamingResponse(
+                rawGraph.entities,
+                rawGraph.relations,
+                options
+              );
+            }, limit);
 
             const fullResponse = JSON.stringify(finalResponse);
 
@@ -771,19 +859,19 @@ class MemoryServer {
             const args = validateSearchSimilarRequest(request.params.arguments);
 
             // Auto-reduce if response exceeds token limits
-            const finalResponse = await this.autoReduceResponse(
-              async (tryLimit: number) => {
-                const results = await this.graphManager.searchSimilar(
-                  args.query,
-                  args.entityTypes,
-                  tryLimit,
-                  args.searchMode || 'semantic',
-                  args.collection
-                );
-                return await streamingResponseBuilder.buildGenericStreamingResponse(results, TOKEN_CONFIG.DEFAULT_TOKEN_LIMIT);
-              },
-              args.limit || 20
-            );
+            const finalResponse = await this.autoReduceResponse(async (tryLimit: number) => {
+              const results = await this.graphManager.searchSimilar(
+                args.query,
+                args.entityTypes,
+                tryLimit,
+                args.searchMode || "semantic",
+                args.collection
+              );
+              return await streamingResponseBuilder.buildGenericStreamingResponse(
+                results,
+                TOKEN_CONFIG.DEFAULT_TOKEN_LIMIT
+              );
+            }, args.limit || 20);
 
             return {
               content: [
@@ -801,20 +889,22 @@ class MemoryServer {
             // Auto-reduce if response exceeds token limits
             // Start with actual scope limits from Qdrant persistence
             const scopeLimits = {
-              'minimal': 50,      // No specific limit for minimal
-              'logical': 20,      // From memory: logical scope limit
-              'dependencies': 20  // From memory: dependencies scope limit
+              minimal: 50, // No specific limit for minimal
+              logical: 20, // From memory: logical scope limit
+              dependencies: 20, // From memory: dependencies scope limit
             };
-            const initialLimit = scopeLimits[args.scope || 'minimal'];
+            const initialLimit = scopeLimits[args.scope || "minimal"];
 
-            const finalResponse = await this.autoReduceResponse(
-              async (tryLimit: number) => {
-                // Need to pass the limit through to the implementation
-                const results = await this.graphManager.getImplementation(args.entityName, args.scope, tryLimit, args.collection);
-                return await streamingResponseBuilder.buildGenericStreamingResponse(results);
-              },
-              initialLimit
-            );
+            const finalResponse = await this.autoReduceResponse(async (tryLimit: number) => {
+              // Need to pass the limit through to the implementation
+              const results = await this.graphManager.getImplementation(
+                args.entityName,
+                args.scope,
+                tryLimit,
+                args.collection
+              );
+              return await streamingResponseBuilder.buildGenericStreamingResponse(results);
+            }, initialLimit);
 
             return {
               content: [
@@ -844,11 +934,7 @@ class MemoryServer {
           case "get_doc": {
             const args = validateGetDocRequest(request.params.arguments);
 
-            const doc = await this.graphManager.getDoc(
-              args.docId,
-              args.section,
-              args.collection
-            );
+            const doc = await this.graphManager.getDoc(args.docId, args.section, args.collection);
 
             if (!doc) {
               throw new McpError(ErrorCode.InvalidParams, `Document not found: ${args.docId}`);
@@ -899,27 +985,30 @@ class MemoryServer {
             const args = validateSetPlanModeRequest(request.params.arguments);
             this.planModeGuard.setPlanMode(args.enabled);
             return {
-              content: [{
-                type: "text",
-                text: JSON.stringify({
-                  planModeEnabled: args.enabled,
-                  message: args.enabled
-                    ? "Plan Mode enabled. Only read-only operations allowed (search_similar, read_graph, get_implementation, search_docs, get_doc, search_tickets, get_ticket)."
-                    : "Plan Mode disabled. All operations allowed.",
-                  blockedTools: args.enabled ? this.planModeGuard.getBlockedTools() : [],
-                  allowedTools: this.planModeGuard.getAllowedTools()
-                }, null, 2)
-              }]
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(
+                    {
+                      planModeEnabled: args.enabled,
+                      message: args.enabled
+                        ? "Plan Mode enabled. Only read-only operations allowed (search_similar, read_graph, get_implementation, search_docs, get_doc, search_tickets, get_ticket)."
+                        : "Plan Mode disabled. All operations allowed.",
+                      blockedTools: args.enabled ? this.planModeGuard.getBlockedTools() : [],
+                      allowedTools: this.planModeGuard.getAllowedTools(),
+                    },
+                    null,
+                    2
+                  ),
+                },
+              ],
             };
           }
 
           default:
-            throw new McpError(
-              ErrorCode.MethodNotFound,
-              `Unknown tool: ${request.params.name}`
-            );
+            throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
         }
-        
+
         // Ensure response never exceeds token limits
         if (response && response.content && response.content[0] && response.content[0].text) {
           const maxTokens = 24000; // Conservative limit to stay under 25k
@@ -927,7 +1016,7 @@ class MemoryServer {
           const limitedText = tokenCounter.serializeWithMaxUtilization(originalText, maxTokens);
           response.content[0].text = limitedText;
         }
-        
+
         return response;
       } catch (error) {
         throw new McpError(
@@ -948,44 +1037,47 @@ class MemoryServer {
     const maxAttempts = 10;
     const reductionFactor = 0.7;
     const tokenLimit = TOKEN_CONFIG.DEFAULT_TOKEN_LIMIT; // Use consistent 23k limit
-    
+
     let currentLimit = initialLimit;
     let attempts = 0;
-    
+
     console.error(`[DEBUG] autoReduceResponse starting with initialLimit: ${initialLimit}`);
-    
+
     while (attempts < maxAttempts) {
       try {
         const response = await buildFunction(currentLimit);
         const responseText = JSON.stringify(response);
         const tokenCount = Math.ceil(responseText.length / 4);
-        
-        console.error(`[DEBUG] Attempt ${attempts + 1}: limit=${currentLimit}, response size=${responseText.length} chars, tokens=${tokenCount}`);
-        
+
+        console.error(
+          `[DEBUG] Attempt ${attempts + 1}: limit=${currentLimit}, response size=${responseText.length} chars, tokens=${tokenCount}`
+        );
+
         // If response fits within token limit, return it
         if (tokenCount <= tokenLimit) {
           console.error(`[DEBUG] Response fits within token limit, returning`);
           return response;
         }
-        
+
         // If this was our last attempt, let MCP handle the overflow
         if (attempts === maxAttempts - 1) {
-          console.error(`[ERROR] Auto-reduce failed after ${attempts + 1} attempts. Final response: ${tokenCount} tokens. Letting MCP handle overflow.`);
+          console.error(
+            `[ERROR] Auto-reduce failed after ${attempts + 1} attempts. Final response: ${tokenCount} tokens. Letting MCP handle overflow.`
+          );
           console.error(`[ERROR] This will cause MCP tool response to exceed 25000 token limit!`);
           // Return what we can with final reduced limit
           console.error(`[DEBUG] Using buildGenericStreamingResponse to fit within token limit`);
           const finalResponse = await buildFunction(1); // Get minimal results
           return await streamingResponseBuilder.buildGenericStreamingResponse(
-            finalResponse.content || [], 
+            finalResponse.content || [],
             tokenLimit
           );
         }
-        
+
         // Reduce limit and try again
         currentLimit = Math.max(1, Math.floor(currentLimit * reductionFactor));
         console.error(`[DEBUG] Reducing limit for next attempt: ${currentLimit}`);
         attempts++;
-        
       } catch (error) {
         console.error(`Auto-reduce attempt ${attempts + 1} failed:`, error);
         // Return minimal valid response on error
@@ -997,12 +1089,12 @@ class MemoryServer {
             truncated: true,
             error: `Auto-reduce error: ${error}`,
             sectionsIncluded: [],
-            autoReduceAttempts: attempts + 1
-          }
+            autoReduceAttempts: attempts + 1,
+          },
         };
       }
     }
-    
+
     // Should never reach here, but fallback
     return {
       content: { entities: [], relations: [] },
@@ -1012,8 +1104,8 @@ class MemoryServer {
         truncated: true,
         truncationReason: "Auto-reduce exhausted all attempts",
         sectionsIncluded: [],
-        autoReduceAttempts: maxAttempts
-      }
+        autoReduceAttempts: maxAttempts,
+      },
     };
   }
 

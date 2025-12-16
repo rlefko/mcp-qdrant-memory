@@ -3,7 +3,7 @@
  * Uses industry-standard character-based approximation (chars/4)
  */
 
-import { TokenBudget, ContentSection } from './types.js';
+import type { TokenBudget, ContentSection } from "./types.js";
 
 // Configuration constants centralized for consistency
 export const TOKEN_CONFIG = {
@@ -11,17 +11,17 @@ export const TOKEN_CONFIG = {
   SAFETY_MARGIN: 0.96, // 4% safety buffer for maximum utilization
   DEFAULT_TOKEN_LIMIT: 22000, // Conservative limit accounting for JSON serialization overhead
   MAX_STRING_PREVIEW: 500, // Max length for string previews
-  TRUNCATION_SUFFIX: '...[truncated]'
+  TRUNCATION_SUFFIX: "...[truncated]",
 } as const;
 
 export class TokenCounter {
-  private readonly config = TOKEN_CONFIG
-  
+  private readonly config = TOKEN_CONFIG;
+
   /**
    * Estimate token count from text content
    */
   estimateTokens(content: string | object): number {
-    const text = typeof content === 'string' ? content : JSON.stringify(content);
+    const text = typeof content === "string" ? content : JSON.stringify(content);
     return Math.ceil(text.length / this.config.CHARS_PER_TOKEN);
   }
 
@@ -41,7 +41,7 @@ export class TokenCounter {
     return {
       total: safeLimit,
       used: 0,
-      remaining: safeLimit
+      remaining: safeLimit,
     };
   }
 
@@ -52,7 +52,7 @@ export class TokenCounter {
     return {
       total: budget.total,
       used: budget.used + tokens,
-      remaining: budget.remaining - tokens
+      remaining: budget.remaining - tokens,
     };
   }
 
@@ -77,22 +77,22 @@ export class TokenCounter {
    */
   truncateToFit(content: any, budget: TokenBudget): { content: any; truncated: boolean } {
     const tokens = this.estimateTokensWithFormatting(content);
-    
+
     if (tokens <= budget.remaining) {
       return { content, truncated: false };
     }
 
     // For objects, try to truncate arrays and observations
-    if (typeof content === 'object' && content !== null) {
+    if (typeof content === "object" && content !== null) {
       return this.truncateObject(content, budget);
     }
 
     // For strings, truncate to character limit
-    if (typeof content === 'string') {
+    if (typeof content === "string") {
       const maxChars = this.getMaxContentSize(budget);
       return {
         content: content.substring(0, maxChars) + this.config.TRUNCATION_SUFFIX,
-        truncated: true
+        truncated: true,
       };
     }
 
@@ -114,9 +114,10 @@ export class TokenCounter {
           result[key] = truncatedArray.content;
           truncated = true;
         }
-      } else if (typeof value === 'string' && value.length > this.config.MAX_STRING_PREVIEW) {
+      } else if (typeof value === "string" && value.length > this.config.MAX_STRING_PREVIEW) {
         // Truncate long strings (like docstrings)
-        result[key] = value.substring(0, this.config.MAX_STRING_PREVIEW) + this.config.TRUNCATION_SUFFIX;
+        result[key] =
+          value.substring(0, this.config.MAX_STRING_PREVIEW) + this.config.TRUNCATION_SUFFIX;
         truncated = true;
       }
     }
@@ -153,7 +154,7 @@ export class TokenCounter {
       name,
       content,
       tokenCount: this.estimateTokensWithFormatting(content),
-      priority
+      priority,
     };
   }
 
@@ -170,7 +171,7 @@ export class TokenCounter {
         // Secondary sort: token efficiency (less tokens first)
         return a.tokenCount - b.tokenCount;
       })
-      .filter(section => section.tokenCount <= budget.remaining);
+      .filter((section) => section.tokenCount <= budget.remaining);
   }
 
   /**
@@ -183,11 +184,11 @@ export class TokenCounter {
   } {
     const utilizationPercent = (budget.used / budget.total) * 100;
     const remainingPercent = (budget.remaining / budget.total) * 100;
-    
+
     return {
       utilizationPercent: Math.round(utilizationPercent * 10) / 10,
       remainingPercent: Math.round(remainingPercent * 10) / 10,
-      isNearLimit: utilizationPercent > 85
+      isNearLimit: utilizationPercent > 85,
     };
   }
 
@@ -197,36 +198,36 @@ export class TokenCounter {
    */
   serializeWithMaxUtilization(content: any, tokenLimit: number = 25000): string {
     // Handle string input (already serialized)
-    if (typeof content === 'string') {
+    if (typeof content === "string") {
       const currentTokens = this.estimateTokens(content);
       if (currentTokens <= tokenLimit * 0.98) return content;
-      
+
       // Truncate string to fit token limit
       const maxChars = Math.floor(tokenLimit * 0.98 * this.config.CHARS_PER_TOKEN);
       return content.substring(0, maxChars) + '\n...\n"truncated": true\n}';
     }
 
-    let serialized = JSON.stringify(content, null, 2);
-    let currentTokens = this.estimateTokens(serialized);
-    
+    const serialized = JSON.stringify(content, null, 2);
+    const currentTokens = this.estimateTokens(serialized);
+
     if (currentTokens <= tokenLimit * 0.98) return serialized;
 
     // Calculate reduction ratio based on overflow
     const reductionRatio = (tokenLimit * 0.98) / currentTokens;
-    
+
     // Recursively apply proportional cuts to all arrays
     const workingContent = this.reduceContentRecursively(content, reductionRatio);
-    
+
     return JSON.stringify(workingContent, null, 2);
   }
 
   private reduceContentRecursively(obj: any, ratio: number): any {
     if (Array.isArray(obj)) {
       const targetSize = Math.floor(obj.length * ratio);
-      return obj.slice(0, Math.max(1, targetSize)).map(item => 
-        this.reduceContentRecursively(item, ratio)
-      );
-    } else if (obj && typeof obj === 'object') {
+      return obj
+        .slice(0, Math.max(1, targetSize))
+        .map((item) => this.reduceContentRecursively(item, ratio));
+    } else if (obj && typeof obj === "object") {
       const result: any = {};
       for (const [key, value] of Object.entries(obj)) {
         result[key] = this.reduceContentRecursively(value, ratio);

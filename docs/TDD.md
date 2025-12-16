@@ -27,6 +27,7 @@
 ### 1.1 Purpose
 
 This document provides technical specifications for enhancing the `mcp-qdrant-memory` MCP server with:
+
 - Comprehensive testing infrastructure
 - CI/CD pipeline automation
 - Code quality tooling
@@ -40,12 +41,12 @@ This TDD covers implementation details for all requirements defined in [PRD.md](
 
 ### 1.3 Terminology
 
-| Term | Definition |
-|------|------------|
-| MCP | Model Context Protocol - communication protocol for Claude Code extensions |
-| BM25 | Best Matching 25 - keyword-based ranking algorithm |
-| Hybrid Search | Combination of semantic (vector) and keyword (BM25) search |
-| Progressive Disclosure | Pattern of returning metadata first, implementation on demand |
+| Term                   | Definition                                                                 |
+| ---------------------- | -------------------------------------------------------------------------- |
+| MCP                    | Model Context Protocol - communication protocol for Claude Code extensions |
+| BM25                   | Best Matching 25 - keyword-based ranking algorithm                         |
+| Hybrid Search          | Combination of semantic (vector) and keyword (BM25) search                 |
+| Progressive Disclosure | Pattern of returning metadata first, implementation on demand              |
 
 ---
 
@@ -172,6 +173,7 @@ sequenceDiagram
 **Decision:** Use Vitest (already installed) as the test framework.
 
 **Rationale:**
+
 - Native TypeScript support without transpilation
 - Fast execution with native ESM support
 - Compatible with Jest assertions for familiar API
@@ -214,30 +216,32 @@ src/
 #### 3.1.3 Mocking Strategy
 
 **Qdrant Client Mock:**
+
 ```typescript
 // src/__tests__/mocks/qdrantClient.mock.ts
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 export const mockQdrantClient = {
   getCollections: vi.fn().mockResolvedValue({ collections: [] }),
   createCollection: vi.fn().mockResolvedValue(true),
-  upsert: vi.fn().mockResolvedValue({ status: 'ok' }),
+  upsert: vi.fn().mockResolvedValue({ status: "ok" }),
   search: vi.fn().mockResolvedValue([]),
   scroll: vi.fn().mockResolvedValue({ points: [], next_page_offset: null }),
-  delete: vi.fn().mockResolvedValue({ status: 'ok' }),
+  delete: vi.fn().mockResolvedValue({ status: "ok" }),
 };
 
 export const createMockQdrantClient = () => ({
   ...mockQdrantClient,
   // Reset all mocks
-  _reset: () => Object.values(mockQdrantClient).forEach(fn => fn.mockReset()),
+  _reset: () => Object.values(mockQdrantClient).forEach((fn) => fn.mockReset()),
 });
 ```
 
 **OpenAI Mock:**
+
 ```typescript
 // src/__tests__/mocks/openai.mock.ts
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 // Fixed 1536-dimension embedding for deterministic tests
 const MOCK_EMBEDDING = new Array(1536).fill(0).map((_, i) => Math.sin(i * 0.1));
@@ -252,9 +256,10 @@ export const mockOpenAI = {
 ```
 
 **Fetch Mock (for Linear/GitHub):**
+
 ```typescript
 // src/__tests__/mocks/fetch.mock.ts
-import { vi } from 'vitest';
+import { vi } from "vitest";
 
 export const mockFetch = vi.fn();
 
@@ -274,25 +279,20 @@ export const mockLinearResponse = (data: any) => {
 
 ```typescript
 // vitest.config.ts
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
     globals: true,
-    environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
-    exclude: ['node_modules', 'dist'],
+    environment: "node",
+    include: ["src/**/*.test.ts", "src/**/*.spec.ts"],
+    exclude: ["node_modules", "dist"],
     coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
-      reportsDirectory: './coverage',
-      include: ['src/**/*.ts'],
-      exclude: [
-        'src/**/*.test.ts',
-        'src/**/*.spec.ts',
-        'src/__tests__/**',
-        'src/types.ts',
-      ],
+      provider: "v8",
+      reporter: ["text", "json", "html", "lcov"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**", "src/types.ts"],
       thresholds: {
         lines: 80,
         functions: 80,
@@ -300,7 +300,7 @@ export default defineConfig({
         statements: 80,
       },
     },
-    setupFiles: ['src/__tests__/setup.ts'],
+    setupFiles: ["src/__tests__/setup.ts"],
     testTimeout: 10000,
     hookTimeout: 10000,
   },
@@ -308,9 +308,10 @@ export default defineConfig({
 ```
 
 **Test Setup File:**
+
 ```typescript
 // src/__tests__/setup.ts
-import { vi, beforeEach, afterEach } from 'vitest';
+import { vi, beforeEach, afterEach } from "vitest";
 
 // Reset all mocks between tests
 beforeEach(() => {
@@ -323,9 +324,9 @@ afterEach(() => {
 });
 
 // Mock environment variables
-vi.stubEnv('OPENAI_API_KEY', 'sk-test-key');
-vi.stubEnv('QDRANT_URL', 'http://localhost:6333');
-vi.stubEnv('QDRANT_COLLECTION_NAME', 'test-collection');
+vi.stubEnv("OPENAI_API_KEY", "sk-test-key");
+vi.stubEnv("QDRANT_URL", "http://localhost:6333");
+vi.stubEnv("QDRANT_COLLECTION_NAME", "test-collection");
 ```
 
 ---
@@ -358,8 +359,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -383,8 +384,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -404,8 +405,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -426,7 +427,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -450,8 +451,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -469,7 +470,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 jobs:
   release:
@@ -484,9 +485,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "20"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: npm ci
@@ -541,6 +542,7 @@ updates:
 #### 3.3.1 Result Type Pattern
 
 **Type Definition:**
+
 ```typescript
 // src/types/result.ts
 
@@ -548,9 +550,7 @@ updates:
  * Discriminated union for operation results
  * Allows distinguishing between success with empty data vs failure
  */
-export type Result<T, E = Error> =
-  | { success: true; data: T }
-  | { success: false; error: E };
+export type Result<T, E = Error> = { success: true; data: T } | { success: false; error: E };
 
 /**
  * Helper to create success result
@@ -583,10 +583,7 @@ export function isErr<T, E>(result: Result<T, E>): result is { success: false; e
 /**
  * Map over success value
  */
-export function mapResult<T, U, E>(
-  result: Result<T, E>,
-  fn: (data: T) => U
-): Result<U, E> {
+export function mapResult<T, U, E>(result: Result<T, E>, fn: (data: T) => U): Result<U, E> {
   if (result.success) {
     return ok(fn(result.data));
   }
@@ -614,6 +611,7 @@ export async function tryCatch<T>(
 ```
 
 **Usage Example - Before:**
+
 ```typescript
 // Current implementation (qdrant.ts:501-504)
 } catch (error) {
@@ -622,6 +620,7 @@ export async function tryCatch<T>(
 ```
 
 **Usage Example - After:**
+
 ```typescript
 // New implementation
 async searchSimilar(query: string, options: SearchOptions): Promise<Result<SearchResult[], SearchError>> {
@@ -649,9 +648,12 @@ export interface TimeoutOptions {
 }
 
 export class TimeoutError extends Error {
-  constructor(message: string, public readonly timeoutMs: number) {
+  constructor(
+    message: string,
+    public readonly timeoutMs: number
+  ) {
     super(message);
-    this.name = 'TimeoutError';
+    this.name = "TimeoutError";
   }
 }
 
@@ -674,7 +676,7 @@ export async function fetchWithTimeout(
     });
     return response;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && error.name === "AbortError") {
       throw new TimeoutError(`Request timed out after ${timeout}ms`, timeout);
     }
     throw error;
@@ -689,7 +691,7 @@ export async function fetchWithTimeout(
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
-  errorMessage = 'Operation timed out'
+  errorMessage = "Operation timed out"
 ): Promise<T> {
   let timeoutId: NodeJS.Timeout;
 
@@ -708,15 +710,16 @@ export async function withTimeout<T>(
 ```
 
 **Timeout Configuration:**
+
 ```typescript
 // src/config.ts (additions)
 
 export const TIMEOUT_CONFIG = {
-  QDRANT: parseInt(process.env.QDRANT_TIMEOUT_MS || '60000', 10),
-  OPENAI: parseInt(process.env.OPENAI_TIMEOUT_MS || '30000', 10),
-  VOYAGE: parseInt(process.env.VOYAGE_TIMEOUT_MS || '30000', 10),
-  LINEAR: parseInt(process.env.LINEAR_TIMEOUT_MS || '10000', 10),
-  GITHUB: parseInt(process.env.GITHUB_TIMEOUT_MS || '10000', 10),
+  QDRANT: parseInt(process.env.QDRANT_TIMEOUT_MS || "60000", 10),
+  OPENAI: parseInt(process.env.OPENAI_TIMEOUT_MS || "30000", 10),
+  VOYAGE: parseInt(process.env.VOYAGE_TIMEOUT_MS || "30000", 10),
+  LINEAR: parseInt(process.env.LINEAR_TIMEOUT_MS || "10000", 10),
+  GITHUB: parseInt(process.env.GITHUB_TIMEOUT_MS || "10000", 10),
 } as const;
 ```
 
@@ -725,7 +728,7 @@ export const TIMEOUT_CONFIG = {
 ```typescript
 // src/utils/logger.ts
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogContext {
   [key: string]: unknown;
@@ -751,7 +754,7 @@ class JsonLogger implements Logger {
     error: 3,
   };
 
-  constructor(minLevel: LogLevel = 'info') {
+  constructor(minLevel: LogLevel = "info") {
     this.minLevel = minLevel;
   }
 
@@ -780,43 +783,40 @@ class JsonLogger implements Logger {
   }
 
   debug(message: string, context?: LogContext): void {
-    this.log('debug', message, context);
+    this.log("debug", message, context);
   }
 
   info(message: string, context?: LogContext): void {
-    this.log('info', message, context);
+    this.log("info", message, context);
   }
 
   warn(message: string, context?: LogContext): void {
-    this.log('warn', message, context);
+    this.log("warn", message, context);
   }
 
   error(message: string, error?: Error, context?: LogContext): void {
-    this.log('error', message, context, error);
+    this.log("error", message, context, error);
   }
 }
 
 // Singleton logger instance
-const logLevel = (process.env.LOG_LEVEL || 'info') as LogLevel;
+const logLevel = (process.env.LOG_LEVEL || "info") as LogLevel;
 export const logger: Logger = new JsonLogger(logLevel);
 ```
 
 #### 3.3.4 Error Context Preservation
 
 **McpError Extension:**
+
 ```typescript
 // src/utils/errors.ts
 
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Create McpError while preserving original error context
  */
-export function wrapError(
-  code: ErrorCode,
-  message: string,
-  originalError?: unknown
-): McpError {
+export function wrapError(code: ErrorCode, message: string, originalError?: unknown): McpError {
   const mcpError = new McpError(code, message);
 
   // Preserve original error as cause for debugging
@@ -839,7 +839,7 @@ export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return error;
   }
   return String(error);
@@ -855,7 +855,7 @@ export function getErrorMessage(error: unknown): string {
 ```typescript
 // src/utils/shutdown.ts
 
-import { logger } from './logger.js';
+import { logger } from "./logger.js";
 
 export interface ShutdownHandler {
   name: string;
@@ -875,26 +875,23 @@ class ShutdownManager {
 
   async shutdown(signal: string): Promise<void> {
     if (this.isShuttingDown) {
-      logger.warn('Shutdown already in progress', { signal });
+      logger.warn("Shutdown already in progress", { signal });
       return;
     }
 
     this.isShuttingDown = true;
-    logger.info('Graceful shutdown initiated', { signal });
+    logger.info("Graceful shutdown initiated", { signal });
 
     const timeoutPromise = new Promise<void>((_, reject) => {
-      setTimeout(() => reject(new Error('Shutdown timeout')), this.shutdownTimeout);
+      setTimeout(() => reject(new Error("Shutdown timeout")), this.shutdownTimeout);
     });
 
     try {
-      await Promise.race([
-        this.runHandlers(),
-        timeoutPromise,
-      ]);
-      logger.info('Graceful shutdown completed');
+      await Promise.race([this.runHandlers(), timeoutPromise]);
+      logger.info("Graceful shutdown completed");
       process.exit(0);
     } catch (error) {
-      logger.error('Shutdown failed, forcing exit', error instanceof Error ? error : undefined);
+      logger.error("Shutdown failed, forcing exit", error instanceof Error ? error : undefined);
       process.exit(1);
     }
   }
@@ -902,11 +899,14 @@ class ShutdownManager {
   private async runHandlers(): Promise<void> {
     for (const { name, handler } of this.handlers) {
       try {
-        logger.debug('Running shutdown handler', { name });
+        logger.debug("Running shutdown handler", { name });
         await handler();
-        logger.debug('Shutdown handler completed', { name });
+        logger.debug("Shutdown handler completed", { name });
       } catch (error) {
-        logger.error(`Shutdown handler failed: ${name}`, error instanceof Error ? error : undefined);
+        logger.error(
+          `Shutdown handler failed: ${name}`,
+          error instanceof Error ? error : undefined
+        );
       }
     }
   }
@@ -916,7 +916,7 @@ export const shutdownManager = new ShutdownManager();
 
 // Register signal handlers
 export function initializeShutdown(): void {
-  const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT'];
+  const signals: NodeJS.Signals[] = ["SIGTERM", "SIGINT"];
 
   for (const signal of signals) {
     process.on(signal, () => {
@@ -925,41 +925,45 @@ export function initializeShutdown(): void {
   }
 
   // Handle uncaught exceptions
-  process.on('uncaughtException', (error) => {
-    logger.error('Uncaught exception', error);
-    shutdownManager.shutdown('uncaughtException');
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception", error);
+    shutdownManager.shutdown("uncaughtException");
   });
 
   // Handle unhandled promise rejections
-  process.on('unhandledRejection', (reason) => {
-    logger.error('Unhandled rejection', reason instanceof Error ? reason : new Error(String(reason)));
-    shutdownManager.shutdown('unhandledRejection');
+  process.on("unhandledRejection", (reason) => {
+    logger.error(
+      "Unhandled rejection",
+      reason instanceof Error ? reason : new Error(String(reason))
+    );
+    shutdownManager.shutdown("unhandledRejection");
   });
 }
 ```
 
 **Integration in index.ts:**
+
 ```typescript
 // src/index.ts (additions)
 
-import { shutdownManager, initializeShutdown } from './utils/shutdown.js';
+import { shutdownManager, initializeShutdown } from "./utils/shutdown.js";
 
 // In KnowledgeGraphManager constructor or initialization
 shutdownManager.register({
-  name: 'qdrant-connection',
+  name: "qdrant-connection",
   priority: 50,
   handler: async () => {
     // Close Qdrant connections
-    logger.info('Closing Qdrant connections');
+    logger.info("Closing Qdrant connections");
     // Note: QdrantClient doesn't have explicit close, but we can clean up
   },
 });
 
 shutdownManager.register({
-  name: 'bm25-cleanup',
+  name: "bm25-cleanup",
   priority: 40,
   handler: async () => {
-    logger.info('Cleaning up BM25 services');
+    logger.info("Cleaning up BM25 services");
     this.persistence.clearBM25Services();
   },
 });
@@ -1016,7 +1020,7 @@ class QdrantPersistence {
     }
 
     if (cleaned > 0) {
-      logger.debug('Cleaned up stale BM25 services', { count: cleaned });
+      logger.debug("Cleaned up stale BM25 services", { count: cleaned });
     }
 
     // If still over limit, remove least recently used
@@ -1034,7 +1038,7 @@ class QdrantPersistence {
       if (oldestKey) {
         this.bm25Services.delete(oldestKey);
         this.bm25Initialized.delete(oldestKey);
-        logger.debug('Evicted LRU BM25 service', { collection: oldestKey });
+        logger.debug("Evicted LRU BM25 service", { collection: oldestKey });
       }
     }
   }
@@ -1078,23 +1082,16 @@ const originalFetch = globalThis.fetch;
 /**
  * Scoped fetch override that only adds Qdrant API key to Qdrant requests
  */
-globalThis.fetch = function(
-  input: RequestInfo | URL,
-  init: RequestInit = {}
-): Promise<Response> {
-  const url = typeof input === 'string'
-    ? input
-    : input instanceof URL
-      ? input.href
-      : input.url;
+globalThis.fetch = function (input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
 
-  const qdrantUrl = process.env.QDRANT_URL || '';
+  const qdrantUrl = process.env.QDRANT_URL || "";
   const qdrantApiKey = process.env.QDRANT_API_KEY;
 
   // Only add API key for Qdrant requests
   if (qdrantApiKey && qdrantUrl && url.startsWith(qdrantUrl)) {
     const headers = new Headers(init.headers);
-    headers.set('api-key', qdrantApiKey);
+    headers.set("api-key", qdrantApiKey);
     return originalFetch(input, { ...init, headers });
   }
 
@@ -1119,11 +1116,7 @@ export const INPUT_LIMITS = {
   RELATIONS_ARRAY_MAX_SIZE: 5000,
 } as const;
 
-function validateStringLength(
-  value: string,
-  maxLength: number,
-  fieldName: string
-): void {
+function validateStringLength(value: string, maxLength: number, fieldName: string): void {
   if (value.length > maxLength) {
     throw new McpError(
       ErrorCode.InvalidParams,
@@ -1132,11 +1125,7 @@ function validateStringLength(
   }
 }
 
-function validateArraySize(
-  array: unknown[],
-  maxSize: number,
-  fieldName: string
-): void {
+function validateArraySize(array: unknown[], maxSize: number, fieldName: string): void {
   if (array.length > maxSize) {
     throw new McpError(
       ErrorCode.InvalidParams,
@@ -1149,11 +1138,7 @@ function validateArraySize(
 export function validateSearchSimilarRequest(args: unknown): SearchSimilarRequest {
   // ... existing validation ...
 
-  validateStringLength(
-    validated.query,
-    INPUT_LIMITS.QUERY_MAX_LENGTH,
-    'query'
-  );
+  validateStringLength(validated.query, INPUT_LIMITS.QUERY_MAX_LENGTH, "query");
 
   return validated;
 }
@@ -1162,32 +1147,20 @@ export function validateSearchSimilarRequest(args: unknown): SearchSimilarReques
 export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequest {
   // ... existing validation ...
 
-  validateArraySize(
-    validated.entities,
-    INPUT_LIMITS.ENTITY_ARRAY_MAX_SIZE,
-    'entities'
-  );
+  validateArraySize(validated.entities, INPUT_LIMITS.ENTITY_ARRAY_MAX_SIZE, "entities");
 
   for (const entity of validated.entities) {
-    validateStringLength(
-      entity.name,
-      INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH,
-      'entity.name'
-    );
+    validateStringLength(entity.name, INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH, "entity.name");
 
     if (entity.observations) {
       validateArraySize(
         entity.observations,
         INPUT_LIMITS.OBSERVATIONS_MAX_PER_ENTITY,
-        'entity.observations'
+        "entity.observations"
       );
 
       for (const obs of entity.observations) {
-        validateStringLength(
-          obs,
-          INPUT_LIMITS.OBSERVATION_CONTENT_MAX_LENGTH,
-          'observation'
-        );
+        validateStringLength(obs, INPUT_LIMITS.OBSERVATION_CONTENT_MAX_LENGTH, "observation");
       }
     }
   }
@@ -1202,38 +1175,38 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
 
 ### 4.1 New Files Summary
 
-| File | Purpose | Lines (est.) |
-|------|---------|--------------|
-| `vitest.config.ts` | Vitest configuration | 40 |
-| `.github/workflows/ci.yml` | CI workflow | 120 |
-| `.github/workflows/release.yml` | Release automation | 50 |
-| `.github/dependabot.yml` | Dependency updates | 25 |
-| `.eslintrc.json` | ESLint configuration | 50 |
-| `.prettierrc` | Prettier configuration | 10 |
-| `README.md` | Project documentation | 300 |
-| `CONTRIBUTING.md` | Contributor guide | 150 |
-| `CHANGELOG.md` | Version history | 50 |
-| `LICENSE` | MIT license | 20 |
-| `src/types/result.ts` | Result type definitions | 60 |
-| `src/utils/timeout.ts` | Timeout utilities | 80 |
-| `src/utils/logger.ts` | Structured logger | 100 |
-| `src/utils/errors.ts` | Error utilities | 40 |
-| `src/utils/shutdown.ts` | Graceful shutdown | 100 |
-| `src/__tests__/setup.ts` | Test setup | 30 |
-| `src/__tests__/mocks/*.ts` | Mock implementations | 150 |
-| `src/__tests__/unit/*.test.ts` | Unit tests | 800 |
-| `src/__tests__/integration/*.test.ts` | Integration tests | 400 |
+| File                                  | Purpose                 | Lines (est.) |
+| ------------------------------------- | ----------------------- | ------------ |
+| `vitest.config.ts`                    | Vitest configuration    | 40           |
+| `.github/workflows/ci.yml`            | CI workflow             | 120          |
+| `.github/workflows/release.yml`       | Release automation      | 50           |
+| `.github/dependabot.yml`              | Dependency updates      | 25           |
+| `.eslintrc.json`                      | ESLint configuration    | 50           |
+| `.prettierrc`                         | Prettier configuration  | 10           |
+| `README.md`                           | Project documentation   | 300          |
+| `CONTRIBUTING.md`                     | Contributor guide       | 150          |
+| `CHANGELOG.md`                        | Version history         | 50           |
+| `LICENSE`                             | MIT license             | 20           |
+| `src/types/result.ts`                 | Result type definitions | 60           |
+| `src/utils/timeout.ts`                | Timeout utilities       | 80           |
+| `src/utils/logger.ts`                 | Structured logger       | 100          |
+| `src/utils/errors.ts`                 | Error utilities         | 40           |
+| `src/utils/shutdown.ts`               | Graceful shutdown       | 100          |
+| `src/__tests__/setup.ts`              | Test setup              | 30           |
+| `src/__tests__/mocks/*.ts`            | Mock implementations    | 150          |
+| `src/__tests__/unit/*.test.ts`        | Unit tests              | 800          |
+| `src/__tests__/integration/*.test.ts` | Integration tests       | 400          |
 
 ### 4.2 Modified Files Summary
 
-| File | Changes |
-|------|---------|
-| `package.json` | Add scripts, devDependencies (eslint, prettier, husky) |
-| `src/index.ts` | Integrate shutdown, update error handling |
-| `src/persistence/qdrant.ts` | Add Result types, BM25 cleanup, timeouts |
-| `src/validation.ts` | Add size validation |
-| `src/fetch-override.ts` | Scope to Qdrant URLs only |
-| `src/bm25/bm25Service.ts` | Unicode support in text processing |
+| File                        | Changes                                                |
+| --------------------------- | ------------------------------------------------------ |
+| `package.json`              | Add scripts, devDependencies (eslint, prettier, husky) |
+| `src/index.ts`              | Integrate shutdown, update error handling              |
+| `src/persistence/qdrant.ts` | Add Result types, BM25 cleanup, timeouts               |
+| `src/validation.ts`         | Add size validation                                    |
+| `src/fetch-override.ts`     | Scope to Qdrant URLs only                              |
+| `src/bm25/bm25Service.ts`   | Unicode support in text processing                     |
 
 ### 4.3 Package.json Changes
 
@@ -1283,6 +1256,7 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
 ### 5.1 No Breaking Changes
 
 All changes are internal. The MCP tool interfaces remain unchanged:
+
 - `search_similar` - Same input/output schema
 - `read_graph` - Same input/output schema
 - `get_implementation` - Same input/output schema
@@ -1291,11 +1265,11 @@ All changes are internal. The MCP tool interfaces remain unchanged:
 
 ### 5.2 New Error Behaviors
 
-| Tool | Current Behavior | New Behavior |
-|------|-----------------|--------------|
-| `search_similar` | Returns `[]` on error | Returns error with code |
-| `search_tickets` | Returns `[]` on API error | Returns error with code |
-| All tools | Timeout after 60s (Qdrant only) | Configurable timeouts per service |
+| Tool             | Current Behavior                | New Behavior                      |
+| ---------------- | ------------------------------- | --------------------------------- |
+| `search_similar` | Returns `[]` on error           | Returns error with code           |
+| `search_tickets` | Returns `[]` on API error       | Returns error with code           |
+| All tools        | Timeout after 60s (Qdrant only) | Configurable timeouts per service |
 
 ---
 
@@ -1308,6 +1282,7 @@ No migration required. All changes are backward compatible.
 ### 6.2 For Contributors
 
 1. **Clone and install:**
+
    ```bash
    git clone https://github.com/rlefko/mcp-qdrant-memory.git
    cd mcp-qdrant-memory
@@ -1315,12 +1290,14 @@ No migration required. All changes are backward compatible.
    ```
 
 2. **Run tests:**
+
    ```bash
    npm test
    npm run test:coverage
    ```
 
 3. **Check code quality:**
+
    ```bash
    npm run lint
    npm run typecheck
@@ -1335,15 +1312,15 @@ No migration required. All changes are backward compatible.
 
 ### 7.1 Unit Test Coverage Targets
 
-| Module | Target | Rationale |
-|--------|--------|-----------|
-| `validation.ts` | 95% | Critical for security |
-| `tokenCounter.ts` | 95% | Pure functions, easy to test |
-| `planModeGuard.ts` | 95% | Critical access control |
-| `bm25Service.ts` | 90% | Core search functionality |
-| `streamingResponseBuilder.ts` | 85% | Complex but stable |
-| `persistence/qdrant.ts` | 80% | Many external deps |
-| `index.ts` | 75% | Integration-heavy |
+| Module                        | Target | Rationale                    |
+| ----------------------------- | ------ | ---------------------------- |
+| `validation.ts`               | 95%    | Critical for security        |
+| `tokenCounter.ts`             | 95%    | Pure functions, easy to test |
+| `planModeGuard.ts`            | 95%    | Critical access control      |
+| `bm25Service.ts`              | 90%    | Core search functionality    |
+| `streamingResponseBuilder.ts` | 85%    | Complex but stable           |
+| `persistence/qdrant.ts`       | 80%    | Many external deps           |
+| `index.ts`                    | 75%    | Integration-heavy            |
 
 ### 7.2 Test Categories
 
@@ -1354,53 +1331,52 @@ No migration required. All changes are backward compatible.
 ### 7.3 Example Test Cases
 
 **validation.test.ts:**
+
 ```typescript
-describe('validateSearchSimilarRequest', () => {
-  it('should accept valid request', () => {
+describe("validateSearchSimilarRequest", () => {
+  it("should accept valid request", () => {
     const result = validateSearchSimilarRequest({
-      query: 'authentication',
+      query: "authentication",
       limit: 10,
     });
-    expect(result.query).toBe('authentication');
+    expect(result.query).toBe("authentication");
     expect(result.limit).toBe(10);
   });
 
-  it('should reject query exceeding max length', () => {
-    const longQuery = 'a'.repeat(10001);
-    expect(() => validateSearchSimilarRequest({ query: longQuery }))
-      .toThrow('query exceeds maximum length');
+  it("should reject query exceeding max length", () => {
+    const longQuery = "a".repeat(10001);
+    expect(() => validateSearchSimilarRequest({ query: longQuery })).toThrow(
+      "query exceeds maximum length"
+    );
   });
 
-  it('should use default limit when not specified', () => {
-    const result = validateSearchSimilarRequest({ query: 'test' });
+  it("should use default limit when not specified", () => {
+    const result = validateSearchSimilarRequest({ query: "test" });
     expect(result.limit).toBe(10);
   });
 });
 ```
 
 **bm25Service.test.ts:**
+
 ```typescript
-describe('BM25Service', () => {
-  describe('Unicode support', () => {
-    it('should handle Japanese text', () => {
+describe("BM25Service", () => {
+  describe("Unicode support", () => {
+    it("should handle Japanese text", () => {
       const service = new BM25Service();
-      service.addDocuments([
-        { id: '1', content: '認証システム', entityName: 'auth' },
-      ]);
+      service.addDocuments([{ id: "1", content: "認証システム", entityName: "auth" }]);
       service.buildIndex();
 
-      const results = service.search('認証');
+      const results = service.search("認証");
       expect(results.length).toBeGreaterThan(0);
     });
 
-    it('should handle emoji in text', () => {
+    it("should handle emoji in text", () => {
       const service = new BM25Service();
-      service.addDocuments([
-        { id: '1', content: 'authentication 🔐', entityName: 'auth' },
-      ]);
+      service.addDocuments([{ id: "1", content: "authentication 🔐", entityName: "auth" }]);
       service.buildIndex();
 
-      const results = service.search('authentication');
+      const results = service.search("authentication");
       expect(results.length).toBe(1);
     });
   });
@@ -1412,28 +1388,33 @@ describe('BM25Service', () => {
 ## 8. Rollout Plan
 
 ### 8.1 Phase 1: Foundation (PR #1)
+
 - Vitest configuration
 - Basic unit tests for pure functions
 - CI workflow
 
 ### 8.2 Phase 2: Code Quality (PR #2)
+
 - ESLint + Prettier configuration
 - Pre-commit hooks
 - Fix any linting errors
 
 ### 8.3 Phase 3: Documentation (PR #3)
+
 - README.md
 - CONTRIBUTING.md
 - CHANGELOG.md
 - LICENSE
 
 ### 8.4 Phase 4: Error Handling (PR #4)
+
 - Result type implementation
 - Timeout utilities
 - Structured logging
 - Update search functions
 
 ### 8.5 Phase 5: Hardening (PR #5)
+
 - Graceful shutdown
 - BM25 cleanup
 - Fetch scoping
@@ -1441,6 +1422,7 @@ describe('BM25Service', () => {
 - Unicode support
 
 ### 8.6 Phase 6: Coverage Target (PR #6)
+
 - Remaining unit tests
 - Integration tests
 - Achieve 80% coverage target
@@ -1539,4 +1521,4 @@ private prepareText(text: string): string {
 
 ---
 
-*End of TDD*
+_End of TDD_

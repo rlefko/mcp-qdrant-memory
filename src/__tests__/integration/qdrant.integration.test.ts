@@ -4,9 +4,15 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { MockQdrantClient, createMockQdrantClient, MockPoint } from "../mocks/qdrantClient.mock.js";
-import { MockOpenAI, createMockOpenAI, generateDeterministicEmbedding } from "../mocks/openaiClient.mock.js";
-import { validEntities, validEntity, entityWithMultipleObservations } from "../fixtures/entities.js";
+import type { MockQdrantClient, MockPoint } from "../mocks/qdrantClient.mock.js";
+import { createMockQdrantClient } from "../mocks/qdrantClient.mock.js";
+import type { MockOpenAI } from "../mocks/openaiClient.mock.js";
+import { createMockOpenAI } from "../mocks/openaiClient.mock.js";
+import {
+  validEntities,
+  validEntity,
+  entityWithMultipleObservations,
+} from "../fixtures/entities.js";
 import { validRelations, validRelation } from "../fixtures/relations.js";
 
 // Mock environment variables
@@ -284,7 +290,13 @@ describe("QdrantPersistence Integration Tests", () => {
         },
       ]);
 
-      const results = await persistence.searchSimilar("service", undefined, 10, "semantic", "other-project");
+      const results = await persistence.searchSimilar(
+        "service",
+        undefined,
+        10,
+        "semantic",
+        "other-project"
+      );
       expect(Array.isArray(results)).toBe(true);
     });
 
@@ -296,9 +308,9 @@ describe("QdrantPersistence Integration Tests", () => {
     it("should throw on connection failure during search", async () => {
       // Connection failures throw after retries are exhausted
       mockQdrant.setFailure("connection", 10);
-      await expect(
-        persistence.searchSimilar("test", undefined, 10, "semantic")
-      ).rejects.toThrow(/Failed to connect/);
+      await expect(persistence.searchSimilar("test", undefined, 10, "semantic")).rejects.toThrow(
+        /Failed to connect/
+      );
     });
   });
 
@@ -503,8 +515,20 @@ describe("QdrantPersistence Integration Tests", () => {
         },
       ]);
 
-      const resultsA = await persistence.searchSimilar("entity", undefined, 10, "semantic", "project-a");
-      const resultsB = await persistence.searchSimilar("entity", undefined, 10, "semantic", "project-b");
+      const resultsA = await persistence.searchSimilar(
+        "entity",
+        undefined,
+        10,
+        "semantic",
+        "project-a"
+      );
+      const resultsB = await persistence.searchSimilar(
+        "entity",
+        undefined,
+        10,
+        "semantic",
+        "project-b"
+      );
 
       // Results should be from their respective collections
       expect(Array.isArray(resultsA)).toBe(true);

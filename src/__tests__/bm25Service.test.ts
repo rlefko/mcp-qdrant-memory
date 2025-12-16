@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  BM25Service,
-  HybridSearchFusion,
-  BM25Document,
-  BM25SearchResult,
-} from "../bm25/bm25Service.js";
-import { SearchResult } from "../types.js";
+import type { BM25Document, BM25SearchResult } from "../bm25/bm25Service.js";
+import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
+import type { SearchResult } from "../types.js";
 
 // Mock console.error to suppress logging during tests
 vi.spyOn(console, "error").mockImplementation(() => {});
@@ -59,12 +55,8 @@ describe("bm25Service.ts", () => {
       });
 
       it("should accumulate documents", () => {
-        service.addDocuments([
-          { id: "doc1", content: "test", entityType: "class" },
-        ]);
-        service.addDocuments([
-          { id: "doc2", content: "test2", entityType: "function" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "test", entityType: "class" }]);
+        service.addDocuments([{ id: "doc2", content: "test2", entityType: "function" }]);
         expect(service.getStats().documentCount).toBe(2);
       });
 
@@ -121,17 +113,13 @@ describe("bm25Service.ts", () => {
 
     describe("clearDocuments", () => {
       it("should remove all documents", () => {
-        service.addDocuments([
-          { id: "doc1", content: "test", entityType: "class" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "test", entityType: "class" }]);
         service.clearDocuments();
         expect(service.getStats().documentCount).toBe(0);
       });
 
       it("should reset indexed state", () => {
-        service.addDocuments([
-          { id: "doc1", content: "test", entityType: "class" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "test", entityType: "class" }]);
         service.clearDocuments();
         expect(service.getStats().isIndexed).toBe(false);
       });
@@ -139,9 +127,7 @@ describe("bm25Service.ts", () => {
 
     describe("updateDocuments", () => {
       it("should replace existing documents", () => {
-        service.addDocuments([
-          { id: "doc1", content: "old", entityType: "class" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "old", entityType: "class" }]);
         // BM25 needs multiple documents for meaningful IDF scores
         service.updateDocuments([
           { id: "doc2", content: "new unique content", entityType: "function" },
@@ -156,12 +142,8 @@ describe("bm25Service.ts", () => {
       });
 
       it("should clear old documents before adding new ones", () => {
-        service.addDocuments([
-          { id: "doc1", content: "old content", entityType: "class" },
-        ]);
-        service.updateDocuments([
-          { id: "doc2", content: "new content", entityType: "function" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "old content", entityType: "class" }]);
+        service.updateDocuments([{ id: "doc2", content: "new content", entityType: "function" }]);
 
         // Old content is cleared, so document count should reflect new documents only
         expect(service.getStats().documentCount).toBe(1);
@@ -248,11 +230,7 @@ describe("bm25Service.ts", () => {
       });
 
       it("should handle mixed entity types and chunk types", () => {
-        const results = service.search("service", 20, [
-          "class",
-          "metadata",
-          "function",
-        ]);
+        const results = service.search("service", 20, ["class", "metadata", "function"]);
         // Should filter by actual entity types (class, function) only
         results.forEach((r) => {
           expect(["class", "function"]).toContain(r.document.entityType);
@@ -268,9 +246,7 @@ describe("bm25Service.ts", () => {
 
         const results = service.search("test");
         const classResult = results.find((r) => r.document.id === "TestClass");
-        const funcResult = results.find(
-          (r) => r.document.id === "testFunction"
-        );
+        const funcResult = results.find((r) => r.document.id === "testFunction");
 
         if (classResult && funcResult) {
           // Class should have 2x boost, function should have 1.5x
@@ -307,9 +283,7 @@ describe("bm25Service.ts", () => {
 
     describe("getStats", () => {
       it("should return correct statistics", () => {
-        service.addDocuments([
-          { id: "doc1", content: "test", entityType: "class" },
-        ]);
+        service.addDocuments([{ id: "doc1", content: "test", entityType: "class" }]);
         const stats = service.getStats();
 
         expect(stats.documentCount).toBe(1);
@@ -337,10 +311,7 @@ describe("bm25Service.ts", () => {
           score: 1.5,
         };
 
-        const result = BM25Service.convertToSearchResult(
-          bm25Result,
-          "test-collection"
-        );
+        const result = BM25Service.convertToSearchResult(bm25Result, "test-collection");
 
         expect(result.type).toBe("chunk");
         expect(result.score).toBe(1.5);
@@ -359,10 +330,7 @@ describe("bm25Service.ts", () => {
           score: 1.0,
         };
 
-        const result = BM25Service.convertToSearchResult(
-          bm25Result,
-          "collection"
-        );
+        const result = BM25Service.convertToSearchResult(bm25Result, "collection");
         const metadata = result.data.metadata as { has_implementation?: boolean };
         expect(metadata.has_implementation).toBe(false);
       });
@@ -377,10 +345,7 @@ describe("bm25Service.ts", () => {
           score: 2.0,
         };
 
-        const result = BM25Service.convertToSearchResult(
-          bm25Result,
-          "collection"
-        );
+        const result = BM25Service.convertToSearchResult(bm25Result, "collection");
         expect(result.data.entity_name).toBe("MyClass");
       });
     });
@@ -388,10 +353,7 @@ describe("bm25Service.ts", () => {
 
   describe("HybridSearchFusion", () => {
     describe("fuseResults", () => {
-      const createSemanticResult = (
-        id: string,
-        score: number
-      ): SearchResult => ({
+      const createSemanticResult = (id: string, score: number): SearchResult => ({
         type: "chunk",
         score,
         data: {
@@ -403,10 +365,7 @@ describe("bm25Service.ts", () => {
         } as any,
       });
 
-      const createKeywordResult = (
-        id: string,
-        score: number
-      ): BM25SearchResult => ({
+      const createKeywordResult = (id: string, score: number): BM25SearchResult => ({
         document: { id, content: "test", entityType: "class" },
         score,
       });
@@ -477,11 +436,7 @@ describe("bm25Service.ts", () => {
           createKeywordResult("entity2", 1.5),
         ];
 
-        const fused = HybridSearchFusion.fuseResults(
-          [],
-          keywordResults,
-          "test-collection"
-        );
+        const fused = HybridSearchFusion.fuseResults([], keywordResults, "test-collection");
 
         expect(fused.length).toBe(keywordResults.length);
       });
@@ -492,11 +447,7 @@ describe("bm25Service.ts", () => {
           createSemanticResult("entity2", 0.7),
         ];
 
-        const fused = HybridSearchFusion.fuseResults(
-          semanticResults,
-          [],
-          "test-collection"
-        );
+        const fused = HybridSearchFusion.fuseResults(semanticResults, [], "test-collection");
 
         expect(fused.length).toBe(semanticResults.length);
       });

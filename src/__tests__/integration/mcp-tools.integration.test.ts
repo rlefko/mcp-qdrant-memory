@@ -4,10 +4,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { MockQdrantClient, createMockQdrantClient, MockPoint } from "../mocks/qdrantClient.mock.js";
-import { MockOpenAI, createMockOpenAI } from "../mocks/openaiClient.mock.js";
-import { validEntities, validEntity, entityWithMultipleObservations } from "../fixtures/entities.js";
-import { validRelations, validRelation } from "../fixtures/relations.js";
+import type { MockQdrantClient } from "../mocks/qdrantClient.mock.js";
+import { createMockQdrantClient } from "../mocks/qdrantClient.mock.js";
+import type { MockOpenAI } from "../mocks/openaiClient.mock.js";
+import { createMockOpenAI } from "../mocks/openaiClient.mock.js";
+import { validEntities } from "../fixtures/entities.js";
+import { validRelations } from "../fixtures/relations.js";
 
 // Mock environment variables
 vi.stubEnv("QDRANT_URL", "http://localhost:6333");
@@ -75,7 +77,6 @@ import {
   validateSetPlanModeRequest,
 } from "../../validation.js";
 import { PlanModeGuard } from "../../plan-mode-guard.js";
-import { QdrantPersistence } from "../../persistence/qdrant.js";
 
 describe("MCP Tools Integration Tests", () => {
   let planModeGuard: PlanModeGuard;

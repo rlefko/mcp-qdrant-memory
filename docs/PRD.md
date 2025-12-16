@@ -47,18 +47,21 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 ### Current State Issues
 
 #### 2.1 Testing Gap (Critical)
+
 - Vitest is installed as a dependency but **never configured**
 - 9 manual test files exist using a custom `TestRunner` class, not a proper test framework
 - **0% formal test coverage** - no way to detect regressions
 - No integration tests for Qdrant or external API interactions
 
 #### 2.2 CI/CD Absence (Critical)
+
 - No `.github/workflows/` directory
 - No automated builds, linting, or testing on pull requests
 - No release automation or version management
 - No dependency vulnerability scanning
 
 #### 2.3 Documentation Gaps (High)
+
 - **No README.md** in project root (only CLAUDE.md exists)
 - No CONTRIBUTING.md for external contributors
 - No CHANGELOG.md for version history
@@ -66,22 +69,26 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 - No API documentation beyond inline comments
 
 #### 2.4 Silent Error Handling (High)
+
 - `searchSimilar()` returns empty array `[]` on any error (line 501-504)
 - `searchLinearTickets()`/`searchGitHubTickets()` swallow API errors
 - BM25 initialization failures are logged but not propagated
 - Stack traces lost when wrapping errors in McpError
 
 #### 2.5 Security Concerns (Medium)
+
 - `fetch-override.ts` adds Qdrant API key to **all** fetch requests, not just Qdrant URLs
 - No input size/length validation (potential DoS vector)
 - No rate limiting on external API calls
 
 #### 2.6 Resource Management (Medium)
+
 - No graceful shutdown handling (SIGTERM/SIGINT)
 - Per-collection BM25 services created but never cleaned up
 - No timeout configuration for Linear/GitHub/OpenAI/Voyage API calls
 
 #### 2.7 Edge Cases (Low-Medium)
+
 - BM25 text processing strips Unicode characters (`/[^\w\s]/g` regex)
 - Empty collection handling returns silently without notification
 - No handling for very large entity arrays
@@ -92,20 +99,20 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 
 ### Primary Goals
 
-| Goal | Success Metric |
-|------|----------------|
-| Establish testing infrastructure | >80% code coverage; all MCP tools have unit tests |
-| Implement CI/CD pipeline | All PRs pass build, lint, test, typecheck; automated releases |
-| Complete documentation | README, CONTRIBUTING, CHANGELOG, LICENSE; API docs |
-| Fix error handling | No silent failures; all errors distinguishable from empty results |
-| Harden security | Scoped API key injection; validated input sizes |
+| Goal                             | Success Metric                                                    |
+| -------------------------------- | ----------------------------------------------------------------- |
+| Establish testing infrastructure | >80% code coverage; all MCP tools have unit tests                 |
+| Implement CI/CD pipeline         | All PRs pass build, lint, test, typecheck; automated releases     |
+| Complete documentation           | README, CONTRIBUTING, CHANGELOG, LICENSE; API docs                |
+| Fix error handling               | No silent failures; all errors distinguishable from empty results |
+| Harden security                  | Scoped API key injection; validated input sizes                   |
 
 ### Secondary Goals
 
-| Goal | Success Metric |
-|------|----------------|
-| Improve concurrency handling | Graceful shutdown; BM25 service cleanup |
-| Support internationalization | BM25 handles Unicode text correctly |
+| Goal                          | Success Metric                                          |
+| ----------------------------- | ------------------------------------------------------- |
+| Improve concurrency handling  | Graceful shutdown; BM25 service cleanup                 |
+| Support internationalization  | BM25 handles Unicode text correctly                     |
 | Enable contributor onboarding | New contributor can set up and run tests in <10 minutes |
 
 ---
@@ -122,12 +129,14 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 **Requirement:** Configure Vitest test runner with proper settings.
 
 **Acceptance Criteria:**
+
 - [ ] Create `vitest.config.ts` with appropriate settings
 - [ ] Configure test environment for Node.js
 - [ ] Enable coverage reporting with Istanbul
 - [ ] Set up test file patterns (`**/*.test.ts`, `**/*.spec.ts`)
 
 **Files:**
+
 - New: `vitest.config.ts`
 - Modified: `package.json` (add test scripts)
 
@@ -136,6 +145,7 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 **Requirement:** Add npm scripts for testing workflows.
 
 **Scripts Required:**
+
 ```json
 {
   "test": "vitest run",
@@ -151,17 +161,18 @@ This PRD defines requirements to transform `mcp-qdrant-memory` into a production
 
 **Test Coverage Targets:**
 
-| Module | Target Coverage | Priority |
-|--------|-----------------|----------|
-| `validation.ts` | 95% | P0 |
-| `tokenCounter.ts` | 95% | P0 |
-| `bm25Service.ts` | 90% | P0 |
-| `plan-mode-guard.ts` | 95% | P0 |
-| `streamingResponseBuilder.ts` | 85% | P1 |
-| `persistence/qdrant.ts` | 80% | P1 |
-| `index.ts` (MCP handlers) | 75% | P1 |
+| Module                        | Target Coverage | Priority |
+| ----------------------------- | --------------- | -------- |
+| `validation.ts`               | 95%             | P0       |
+| `tokenCounter.ts`             | 95%             | P0       |
+| `bm25Service.ts`              | 90%             | P0       |
+| `plan-mode-guard.ts`          | 95%             | P0       |
+| `streamingResponseBuilder.ts` | 85%             | P1       |
+| `persistence/qdrant.ts`       | 80%             | P1       |
+| `index.ts` (MCP handlers)     | 75%             | P1       |
 
 **Test File Structure:**
+
 ```
 src/
   __tests__/
@@ -183,6 +194,7 @@ src/
 **Requirement:** Create integration tests for external service interactions.
 
 **Integration Test Scenarios:**
+
 - Qdrant CRUD operations (mocked Qdrant client)
 - Embedding generation (mocked OpenAI/Voyage)
 - MCP tool request/response cycle
@@ -215,15 +227,16 @@ src/
 
 **Jobs Required:**
 
-| Job | Trigger | Steps |
-|-----|---------|-------|
-| `build` | push, PR | Install deps, compile TypeScript |
-| `lint` | push, PR | Run ESLint |
-| `typecheck` | push, PR | Run `tsc --noEmit` |
-| `test` | push, PR | Run Vitest with coverage |
-| `security` | push, PR, weekly | Run `npm audit`, Snyk/Dependabot |
+| Job         | Trigger          | Steps                            |
+| ----------- | ---------------- | -------------------------------- |
+| `build`     | push, PR         | Install deps, compile TypeScript |
+| `lint`      | push, PR         | Run ESLint                       |
+| `typecheck` | push, PR         | Run `tsc --noEmit`               |
+| `test`      | push, PR         | Run Vitest with coverage         |
+| `security`  | push, PR, weekly | Run `npm audit`, Snyk/Dependabot |
 
 **Workflow Features:**
+
 - [ ] Node.js matrix (18.x, 20.x, 22.x)
 - [ ] Dependency caching (`actions/cache` for node_modules)
 - [ ] Build artifact caching
@@ -235,6 +248,7 @@ src/
 **Requirement:** Automate npm package releases.
 
 **Release Workflow:**
+
 - [ ] Trigger on version tag push (`v*.*.*`)
 - [ ] Build and publish to npm registry
 - [ ] Generate GitHub release with changelog
@@ -245,6 +259,7 @@ src/
 **Requirement:** Automated dependency updates and security scanning.
 
 **Tools:**
+
 - [ ] Dependabot configuration for npm
 - [ ] Weekly security audit job
 - [ ] Automated PR for dependency updates
@@ -263,6 +278,7 @@ src/
 **File:** `.eslintrc.json`
 
 **Rules to Enable:**
+
 - `@typescript-eslint/recommended`
 - `@typescript-eslint/strict-type-checked`
 - No unused variables
@@ -277,6 +293,7 @@ src/
 **File:** `.prettierrc`
 
 **Settings:**
+
 ```json
 {
   "semi": true,
@@ -292,10 +309,12 @@ src/
 **Requirement:** Enforce quality checks before commit.
 
 **Tools:**
+
 - [ ] Husky for git hooks
 - [ ] lint-staged for staged file linting
 
 **Hook Configuration:**
+
 ```json
 {
   "*.{ts,js}": ["eslint --fix", "prettier --write"],
@@ -306,6 +325,7 @@ src/
 #### 4.3.4 Package.json Scripts
 
 **Additional Scripts:**
+
 ```json
 {
   "lint": "eslint src/",
@@ -328,6 +348,7 @@ src/
 **Requirement:** Create comprehensive project README.
 
 **Sections Required:**
+
 - [ ] Project description and features
 - [ ] Architecture diagram (Mermaid)
 - [ ] Quick start guide
@@ -344,6 +365,7 @@ src/
 **Requirement:** Create contributor guide.
 
 **Sections Required:**
+
 - [ ] Development environment setup
 - [ ] Code style guidelines
 - [ ] Testing requirements
@@ -358,6 +380,7 @@ src/
 **Format:** Keep a Changelog (https://keepachangelog.com/)
 
 **Sections per version:**
+
 - Added, Changed, Deprecated, Removed, Fixed, Security
 
 #### 4.4.4 LICENSE
@@ -373,6 +396,7 @@ src/
 **Location:** `docs/API.md` or inline in README
 
 **Per-tool documentation:**
+
 - Description
 - Input schema
 - Output format
@@ -391,13 +415,13 @@ src/
 **Requirement:** Implement Result type for distinguishing errors from empty results.
 
 **Design:**
+
 ```typescript
-type Result<T, E = Error> =
-  | { success: true; data: T }
-  | { success: false; error: E };
+type Result<T, E = Error> = { success: true; data: T } | { success: false; error: E };
 ```
 
 **Functions to Update:**
+
 - `searchSimilar()` - currently returns `[]` on error
 - `searchLinearTickets()` - currently returns `[]` on error
 - `searchGitHubTickets()` - currently returns `[]` on error
@@ -418,12 +442,13 @@ type Result<T, E = Error> =
 | GitHub API | 10s | Yes (new) |
 
 **Implementation:**
+
 ```typescript
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs: number
-): Promise<Response>
+): Promise<Response>;
 ```
 
 #### 4.5.3 Structured Logging
@@ -431,6 +456,7 @@ async function fetchWithTimeout(
 **Requirement:** Replace console.error with structured logger.
 
 **Logger Interface:**
+
 ```typescript
 interface Logger {
   debug(message: string, context?: object): void;
@@ -441,6 +467,7 @@ interface Logger {
 ```
 
 **Implementation Options:**
+
 - Simple: Custom implementation with JSON output
 - Advanced: pino or winston integration
 
@@ -449,6 +476,7 @@ interface Logger {
 **Requirement:** Preserve stack traces and context when wrapping errors.
 
 **Current Problem (index.ts:934-936):**
+
 ```typescript
 throw new McpError(
   ErrorCode.InternalError,
@@ -458,11 +486,12 @@ throw new McpError(
 ```
 
 **Solution:**
+
 ```typescript
 throw new McpError(
   ErrorCode.InternalError,
   error instanceof Error ? error.message : String(error),
-  { cause: error }  // Preserve original error
+  { cause: error } // Preserve original error
 );
 ```
 
@@ -478,10 +507,12 @@ throw new McpError(
 **Requirement:** Handle process termination signals properly.
 
 **Signals to Handle:**
+
 - `SIGTERM` - Kubernetes/Docker termination
 - `SIGINT` - Ctrl+C in terminal
 
 **Shutdown Actions:**
+
 1. Stop accepting new MCP requests
 2. Wait for in-flight requests to complete (with timeout)
 3. Close Qdrant connections
@@ -497,11 +528,13 @@ throw new McpError(
 **Current Problem:** BM25 services accumulate indefinitely in `bm25Services` Map.
 
 **Solution:**
+
 - Track last access time per service
 - Implement cleanup for services not accessed in N minutes
 - Set maximum number of cached services
 
 **Configuration:**
+
 ```typescript
 const BM25_SERVICE_MAX_COUNT = 10;
 const BM25_SERVICE_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -512,6 +545,7 @@ const BM25_SERVICE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 **Requirement:** Proper connection handling for long-running process.
 
 **Improvements:**
+
 - [ ] Health check for Qdrant connection
 - [ ] Automatic reconnection on connection loss
 - [ ] Connection state logging
@@ -528,25 +562,27 @@ const BM25_SERVICE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 **Requirement:** Restrict API key injection to Qdrant URLs only.
 
 **Current Problem (fetch-override.ts):**
+
 ```typescript
 // Adds API key to ALL fetch requests
-globalThis.fetch = function(input, init = {}) {
+globalThis.fetch = function (input, init = {}) {
   const headers = new Headers(init.headers);
-  headers.set('api-key', process.env.QDRANT_API_KEY!);
+  headers.set("api-key", process.env.QDRANT_API_KEY!);
   return originalFetch(input, { ...init, headers });
 };
 ```
 
 **Solution:**
+
 ```typescript
-globalThis.fetch = function(input, init = {}) {
-  const url = typeof input === 'string' ? input : input.url;
-  const qdrantUrl = process.env.QDRANT_URL || '';
+globalThis.fetch = function (input, init = {}) {
+  const url = typeof input === "string" ? input : input.url;
+  const qdrantUrl = process.env.QDRANT_URL || "";
 
   // Only add API key for Qdrant requests
   if (url.startsWith(qdrantUrl)) {
     const headers = new Headers(init.headers);
-    headers.set('api-key', process.env.QDRANT_API_KEY!);
+    headers.set("api-key", process.env.QDRANT_API_KEY!);
     return originalFetch(input, { ...init, headers });
   }
 
@@ -574,6 +610,7 @@ globalThis.fetch = function(input, init = {}) {
 **Requirement:** Validate API keys at startup, not on first use.
 
 **Checks:**
+
 - [ ] OPENAI_API_KEY format validation (sk-...)
 - [ ] QDRANT_API_KEY presence check if QDRANT_URL is cloud
 - [ ] VOYAGE_API_KEY format validation if provider is voyage
@@ -590,11 +627,13 @@ globalThis.fetch = function(input, init = {}) {
 **Requirement:** Handle non-ASCII characters in BM25 text processing.
 
 **Current Problem (bm25Service.ts:224-256):**
+
 ```typescript
 .replace(/[^\w\s]/g, ' ')  // Strips Unicode!
 ```
 
 **Solution:**
+
 ```typescript
 // Use Unicode-aware word boundary
 .replace(/[^\p{L}\p{N}\s]/gu, ' ')  // Preserves Unicode letters and numbers
@@ -605,13 +644,15 @@ globalThis.fetch = function(input, init = {}) {
 **Requirement:** Provide clear feedback when collection is empty or misconfigured.
 
 **Current Problem (qdrant.ts:221-224):**
+
 ```typescript
 if (!currentVectorSize) {
-  return;  // Silent return
+  return; // Silent return
 }
 ```
 
 **Solution:**
+
 - Log warning when collection has no vector config
 - Return informative error in MCP response
 - Suggest remediation steps
@@ -621,11 +662,13 @@ if (!currentVectorSize) {
 **Requirement:** Handle very large response payloads gracefully.
 
 **Current Mitigations (Good):**
+
 - `autoReduceResponse()` with exponential backoff
 - Token limits enforced at multiple levels
 - Safety limits on scroll operations (50 batches, 50,000 items)
 
 **Improvements:**
+
 - [ ] Add streaming response support for very large graphs
 - [ ] Implement pagination for `read_graph` results
 - [ ] Add `total_count` to paginated responses
@@ -650,63 +693,63 @@ The following are explicitly **out of scope** for this enhancement:
 
 ### Milestone 1: Testing Foundation (Week 1-2)
 
-| Deliverable | Description |
-|-------------|-------------|
-| Vitest configuration | `vitest.config.ts` with coverage |
-| Core module tests | validation, tokenCounter, planModeGuard |
-| Test scripts | npm test, test:watch, test:coverage |
-| 60% coverage | Baseline coverage established |
+| Deliverable          | Description                             |
+| -------------------- | --------------------------------------- |
+| Vitest configuration | `vitest.config.ts` with coverage        |
+| Core module tests    | validation, tokenCounter, planModeGuard |
+| Test scripts         | npm test, test:watch, test:coverage     |
+| 60% coverage         | Baseline coverage established           |
 
 ### Milestone 2: CI/CD Pipeline (Week 2-3)
 
-| Deliverable | Description |
-|-------------|-------------|
-| CI workflow | `.github/workflows/ci.yml` |
-| Quality gates | Build, lint, typecheck, test on PR |
-| Dependency scanning | npm audit integration |
+| Deliverable         | Description                        |
+| ------------------- | ---------------------------------- |
+| CI workflow         | `.github/workflows/ci.yml`         |
+| Quality gates       | Build, lint, typecheck, test on PR |
+| Dependency scanning | npm audit integration              |
 
 ### Milestone 3: Code Quality & Docs (Week 3-4)
 
-| Deliverable | Description |
-|-------------|-------------|
+| Deliverable       | Description                       |
+| ----------------- | --------------------------------- |
 | ESLint + Prettier | Linting and formatting configured |
-| Pre-commit hooks | Husky + lint-staged |
-| README.md | Comprehensive project README |
-| CONTRIBUTING.md | Contributor guide |
-| CHANGELOG.md | Version history |
-| LICENSE | MIT license file |
+| Pre-commit hooks  | Husky + lint-staged               |
+| README.md         | Comprehensive project README      |
+| CONTRIBUTING.md   | Contributor guide                 |
+| CHANGELOG.md      | Version history                   |
+| LICENSE           | MIT license file                  |
 
 ### Milestone 4: Error Handling (Week 4-5)
 
-| Deliverable | Description |
-|-------------|-------------|
-| Result type | Error/success distinction pattern |
-| Timeout configuration | HTTP call timeouts |
-| Structured logging | Logger interface implementation |
-| Error context | Stack trace preservation |
+| Deliverable           | Description                       |
+| --------------------- | --------------------------------- |
+| Result type           | Error/success distinction pattern |
+| Timeout configuration | HTTP call timeouts                |
+| Structured logging    | Logger interface implementation   |
+| Error context         | Stack trace preservation          |
 
 ### Milestone 5: Hardening (Week 5-6)
 
-| Deliverable | Description |
-|-------------|-------------|
-| Graceful shutdown | Signal handlers |
-| BM25 cleanup | LRU service management |
-| Fetch scoping | API key injection fix |
-| Input validation | Size limits |
-| Unicode support | BM25 i18n fix |
-| 80% coverage | Target coverage achieved |
+| Deliverable       | Description              |
+| ----------------- | ------------------------ |
+| Graceful shutdown | Signal handlers          |
+| BM25 cleanup      | LRU service management   |
+| Fetch scoping     | API key injection fix    |
+| Input validation  | Size limits              |
+| Unicode support   | BM25 i18n fix            |
+| 80% coverage      | Target coverage achieved |
 
 ---
 
 ## 7. Open Questions
 
-| Question | Owner | Status |
-|----------|-------|--------|
-| Should we use pino or winston for logging, or keep it simple? | TBD | Open |
-| What's the minimum Node.js version to support? (Currently 18+) | TBD | Open |
-| Should we add OpenAPI spec for MCP tools documentation? | TBD | Open |
-| Do we need rate limiting for external APIs or is timeout sufficient? | TBD | Open |
-| Should BM25 services be persisted across restarts? | TBD | Open |
+| Question                                                             | Owner | Status |
+| -------------------------------------------------------------------- | ----- | ------ |
+| Should we use pino or winston for logging, or keep it simple?        | TBD   | Open   |
+| What's the minimum Node.js version to support? (Currently 18+)       | TBD   | Open   |
+| Should we add OpenAPI spec for MCP tools documentation?              | TBD   | Open   |
+| Do we need rate limiting for external APIs or is timeout sufficient? | TBD   | Open   |
+| Should BM25 services be persisted across restarts?                   | TBD   | Open   |
 
 ---
 
@@ -714,35 +757,35 @@ The following are explicitly **out of scope** for this enhancement:
 
 ### A. Files Audited
 
-| File | Lines | Issues Found |
-|------|-------|--------------|
-| `src/index.ts` | 1038 | Error context loss (line 934-936) |
-| `src/persistence/qdrant.ts` | ~1200 | Silent failures (501, 835, 1023, 1080) |
-| `src/validation.ts` | 510 | No size limits |
-| `src/bm25/bm25Service.ts` | 331 | Unicode stripping (line 224) |
-| `src/fetch-override.ts` | 7 | Over-broad API key injection |
-| `src/plan-mode-guard.ts` | 164 | Well-implemented |
-| `src/tokenCounter.ts` | 241 | Well-implemented |
-| `src/streamingResponseBuilder.ts` | 546 | Well-implemented |
+| File                              | Lines | Issues Found                           |
+| --------------------------------- | ----- | -------------------------------------- |
+| `src/index.ts`                    | 1038  | Error context loss (line 934-936)      |
+| `src/persistence/qdrant.ts`       | ~1200 | Silent failures (501, 835, 1023, 1080) |
+| `src/validation.ts`               | 510   | No size limits                         |
+| `src/bm25/bm25Service.ts`         | 331   | Unicode stripping (line 224)           |
+| `src/fetch-override.ts`           | 7     | Over-broad API key injection           |
+| `src/plan-mode-guard.ts`          | 164   | Well-implemented                       |
+| `src/tokenCounter.ts`             | 241   | Well-implemented                       |
+| `src/streamingResponseBuilder.ts` | 546   | Well-implemented                       |
 
 ### B. Dependency Analysis
 
-| Dependency | Version | Security Status |
-|------------|---------|-----------------|
-| `@modelcontextprotocol/sdk` | ^1.0.1 | OK |
-| `@qdrant/js-client-rest` | ^1.13.0 | OK |
-| `axios` | ^1.8.1 | OK |
-| `dotenv` | ^16.3.1 | OK |
-| `minimatch` | ^9.0.0 | OK |
-| `okapibm25` | ^1.4.1 | OK |
-| `openai` | ^4.24.1 | OK |
+| Dependency                  | Version | Security Status |
+| --------------------------- | ------- | --------------- |
+| `@modelcontextprotocol/sdk` | ^1.0.1  | OK              |
+| `@qdrant/js-client-rest`    | ^1.13.0 | OK              |
+| `axios`                     | ^1.8.1  | OK              |
+| `dotenv`                    | ^16.3.1 | OK              |
+| `minimatch`                 | ^9.0.0  | OK              |
+| `okapibm25`                 | ^1.4.1  | OK              |
+| `openai`                    | ^4.24.1 | OK              |
 
 ### C. Test Coverage Baseline
 
-| Module | Current | Target |
-|--------|---------|--------|
-| All modules | 0% | 80%+ |
+| Module      | Current | Target |
+| ----------- | ------- | ------ |
+| All modules | 0%      | 80%+   |
 
 ---
 
-*End of PRD*
+_End of PRD_

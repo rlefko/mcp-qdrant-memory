@@ -7,6 +7,7 @@ This enhanced version of the MCP-Qdrant-Memory server provides enterprise-grade 
 ## v2.5 Multi-Project Support - ✅ NEW
 
 ### 🚀 Dynamic Collection Parameter
+
 All MCP tools now accept an optional `collection` parameter to override the default collection:
 
 ```typescript
@@ -25,13 +26,16 @@ get_implementation({ entityName: "AuthService", collection: "project-b" })
 ```
 
 ### Benefits
+
 - **Simultaneous Projects**: Work with multiple indexed projects without conflicts
 - **Cross-Project Queries**: Query any collection from any MCP server instance
 - **Per-Collection BM25**: Each collection maintains its own keyword search index
 - **Backward Compatible**: Existing configurations work unchanged (falls back to env var)
 
 ### Configuration
+
 No changes needed for single-project usage. For multi-project:
+
 1. Each project should use a unique collection name during indexing
 2. Pass `collection` parameter to target specific projects
 3. Optional: Set `QDRANT_COLLECTION_NAME` as default fallback
@@ -39,6 +43,7 @@ No changes needed for single-project usage. For multi-project:
 ## v2.4 Progressive Disclosure Architecture - ✅ IMPLEMENTATION COMPLETE & VERIFIED
 
 ### 🚀 Progressive Disclosure Features - ✅ VALIDATED & TESTED
+
 - ✅ **Auto-Reduce Token Management**: Exponential backoff with 0.7 reduction factor (10 max attempts) - TESTED
 - ✅ **25k Token Compliance**: Intelligent token limiting with 96% safety margin - VERIFIED
 - ✅ **Metadata-First Search**: `search_similar` returns lightweight metadata - 3.99ms validated
@@ -55,12 +60,14 @@ No changes needed for single-project usage. For multi-project:
 - ✅ **Observations Array Support**: Complete observations format across all MCP tools - IMPLEMENTED & TESTED
 
 ### 🎯 Smart Filtering & Token Management (v2.0)
+
 - **Smart Mode**: AI-optimized responses that guarantee <25k tokens (vs 393k overflow)
 - **Multiple Modes**: smart/entities/relationships/raw for different use cases
 - **Priority Scoring**: Surfaces public APIs and documented code first
 - **Structured Responses**: Summary + API surface + dependencies + relationships
 
 ### 🚀 Performance & Scalability with BM25 Hybrid Search
+
 - **BM25 Integration**: OkapiBM25 algorithm for exact keyword matching
 - **Hybrid Search**: Reciprocal Rank Fusion (70% semantic + 30% BM25)
 - **Large Collection Support**: Efficiently handles 1000+ entities via scroll API
@@ -79,6 +86,7 @@ No changes needed for single-project usage. For multi-project:
 **Full observations support across all MCP operations:**
 
 ### Entity Storage Structure:
+
 ```typescript
 interface Entity {
   name: string;
@@ -90,7 +98,7 @@ interface Entity {
 {
   type: "chunk",
   chunk_type: "metadata",
-  entity_name: "AuthService", 
+  entity_name: "AuthService",
   entity_type: "class",
   observations: ["Handles user authentication", "Manages JWT tokens", "Integrates with OAuth providers"],
   content: "Handles user authentication. Manages JWT tokens. Integrates with OAuth providers"
@@ -100,42 +108,50 @@ interface Entity {
 ### Observations in All MCP Tools:
 
 **✅ search_similar Results:**
+
 - Now includes `observations` field in search results
-- Enables semantic discovery by behavior ("find JWT validation functions") 
+- Enables semantic discovery by behavior ("find JWT validation functions")
 - Manual entities show complete observations array
 - Auto-indexed entities show empty array if no observations
 
 **✅ read_graph Results:**
+
 - **entities mode**: Shows full `observations` array per entity
 - **smart mode**: Includes observations in API surface (functions/classes with observations)
 - **raw mode**: Complete entity data with observations array
 - **relationships mode**: N/A (relations don't have observations)
 
 **✅ get_implementation Results:**
+
 - Implementation chunks don't contain observations (only metadata chunks do)
 - Use in combination with read_graph for complete context
 
 ### Usage Examples:
+
 ```typescript
 // Create entity with observations
 await create_entities({
-  entities: [{
-    name: "AuthService",
-    entityType: "class",
-    observations: [
-      "Handles user authentication",
-      "Manages JWT tokens",
-      "Integrates with OAuth providers"
-    ]
-  }]
+  entities: [
+    {
+      name: "AuthService",
+      entityType: "class",
+      observations: [
+        "Handles user authentication",
+        "Manages JWT tokens",
+        "Integrates with OAuth providers",
+      ],
+    },
+  ],
 });
 
 // Add more observations to existing entity
 await add_observations({
-  observations: [{
-    entityName: "AuthService", 
-    contents: ["Supports multi-factor authentication", "Logs security events"]
-  }]
+  observations: [
+    {
+      entityName: "AuthService",
+      contents: ["Supports multi-factor authentication", "Logs security events"],
+    },
+  ],
 });
 
 // Search by behavior (semantic discovery)
@@ -243,7 +259,7 @@ async scrollAll(): Promise<{ entities: Entity[], relations: Relation[] }> {
 
 ### Claude Code Integration
 
-```typescript
+````typescript
 // Progressive Disclosure (v2.4) - 90% faster metadata-first search
 const metadataResults = await mcp_memory_project_search_similar("authentication functions");
 // Returns: Lightweight metadata chunks for fast browsing (default behavior)
@@ -262,27 +278,27 @@ const dependencies = await mcp_memory_project_get_implementation("Authentication
 // Returns: AuthenticationService + imported modules and called functions
 
 // Smart Mode (v2.0) - AI-optimized, token-limited responses
-const smartGraph = await mcp_memory_project_read_graph({ 
-  mode: "smart", 
-  limit: 20 
+const smartGraph = await mcp_memory_project_read_graph({
+  mode: "smart",
+  limit: 20
 });
 // Returns: Structured summary + API surface + dependencies <25k tokens
 
 // Entity Type Filtering
-const classes = await mcp_memory_project_read_graph({ 
+const classes = await mcp_memory_project_read_graph({
   mode: "entities",
-  entityTypes: ["class", "function"], 
-  limit: 10 
+  entityTypes: ["class", "function"],
+  limit: 10
 });
 
 // Relationship Focus
-const connections = await mcp_memory_project_read_graph({ 
-  mode: "relationships" 
+const connections = await mcp_memory_project_read_graph({
+  mode: "relationships"
 });
 
 // Raw Mode (Previous behavior, may exceed token limits)
-const fullGraph = await mcp_memory_project_read_graph({ 
-  mode: "raw" 
+const fullGraph = await mcp_memory_project_read_graph({
+  mode: "raw"
 });
 
 // Traditional semantic search now uses progressive disclosure
@@ -320,7 +336,7 @@ const logical = await get_implementation("parseAST", "logical");
 
 // Get parseAST + external dependencies (TreeSitter.parse, ast.walk, etc.)
 const dependencies = await get_implementation("parseAST", "dependencies");
-```
+````
 
 ### BM25 Hybrid Search Examples (NEW)
 
@@ -329,7 +345,7 @@ const dependencies = await get_implementation("parseAST", "dependencies");
 mcp__your_collection__search_similar("user authentication system", [], 10, "semantic")
 # Returns: Entities matching authentication concepts with 0.6-0.8 similarity scores
 
-# BM25 keyword search - best for exact terms  
+# BM25 keyword search - best for exact terms
 mcp__your_collection__search_similar("validateToken JWT decode", [], 10, "keyword")
 # Returns: Entities containing these exact terms with 1.5+ BM25 scores
 
@@ -466,16 +482,19 @@ async scrollAll(): Promise<{ entities: Entity[], relations: Relation[] }> {
 ## Migration Path
 
 ### Phase 1: Enhanced Deployment
+
 1. Deploy enhanced MCP server with `useQdrant: true` default
 2. Verify read_graph returns populated data
 3. Monitor performance with large collections
 
 ### Phase 2: Validation
+
 1. Compare read_graph results with search_similar accuracy
 2. Validate entity and relation integrity
 3. Test fallback behavior when Qdrant unavailable
 
 ### Phase 3: Optimization (Future)
+
 1. Optional complete removal of JSON storage
 2. Advanced caching strategies
 3. Real-time graph updates
@@ -483,16 +502,19 @@ async scrollAll(): Promise<{ entities: Entity[], relations: Relation[] }> {
 ## Benefits
 
 ### Immediate Fixes
+
 - ✅ **read_graph works**: Returns actual knowledge graph with 2930 vectors
 - ✅ **Large collection support**: Handles enterprise-scale codebases
 - ✅ **Zero breaking changes**: Backward compatible with existing setups
 
 ### Performance Improvements
+
 - ✅ **Efficient retrieval**: Scroll API prevents memory issues
 - ✅ **Single source of truth**: Qdrant as authoritative storage
 - ✅ **Reduced latency**: Direct database reads without file I/O
 
 ### Architectural Benefits
+
 - ✅ **Simplified data flow**: Eliminates JSON/Qdrant sync issues
 - ✅ **Scalability**: Supports unlimited knowledge graph growth
 - ✅ **Reliability**: Automatic fallback maintains availability
@@ -522,12 +544,14 @@ curl -X POST "http://localhost:6333/collections/memory-project/points/scroll" \
 ## Future Enhancements
 
 ### Planned Improvements
+
 - **Real-time Updates**: Live graph updates via WebSocket
 - **Query Optimization**: Advanced query patterns for complex graphs
 - **Distributed Storage**: Multi-node Qdrant support
 - **Advanced Caching**: Intelligent cache invalidation strategies
 
 ### Integration Opportunities
+
 - **IDE Plugins**: Direct IDE integration with enhanced MCP server
 - **CI/CD Hooks**: Automated knowledge graph updates
 - **Team Synchronization**: Shared knowledge graphs for development teams

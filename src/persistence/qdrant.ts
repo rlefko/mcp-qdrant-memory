@@ -6,11 +6,29 @@ import {
   COLLECTION_NAME,
   OPENAI_API_KEY,
   QDRANT_API_KEY,
-  getCollectionName
+  getCollectionName,
 } from "../config.js";
-import { Entity, Relation, SmartGraph, ScrollOptions, KnowledgeGraph, SearchResult, SemanticMetadata, DocSearchResult, DocContent, DocType, TicketSearchResult, TicketContent, TicketComment, TicketStatus, TicketPriority, TicketSource } from "../types.js";
+import type {
+  Entity,
+  Relation,
+  SmartGraph,
+  ScrollOptions,
+  KnowledgeGraph,
+  SearchResult,
+  SemanticMetadata,
+  DocSearchResult,
+  DocContent,
+  DocType,
+  TicketSearchResult,
+  TicketContent,
+  TicketComment,
+  TicketStatus,
+  TicketPriority,
+} from "../types.js";
+import { TicketSource } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
-import { ClaudeIgnoreFilter, createFilterFromEnv } from "../claudeignore/index.js";
+import type { ClaudeIgnoreFilter } from "../claudeignore/index.js";
+import { createFilterFromEnv } from "../claudeignore/index.js";
 
 // Create custom Qdrant client that adds auth header
 class CustomQdrantClient extends QdrantClient {
@@ -19,16 +37,16 @@ class CustomQdrantClient extends QdrantClient {
     super({
       url: `${parsed.protocol}//${parsed.hostname}`,
       port: parsed.port ? parseInt(parsed.port) : 6333,
-      https: parsed.protocol === 'https:',
+      https: parsed.protocol === "https:",
       apiKey: QDRANT_API_KEY,
       timeout: 60000,
-      checkCompatibility: false
+      checkCompatibility: false,
     });
   }
 
   // Override request method to log requests
   async getCollections() {
-    const result = await super.getCollections();   
+    const result = await super.getCollections();
     return result;
   }
 }
@@ -110,10 +128,7 @@ export class QdrantPersistence {
     }
 
     // Validate QDRANT_URL format and protocol
-    if (
-      !QDRANT_URL.startsWith("http://") &&
-      !QDRANT_URL.startsWith("https://")
-    ) {
+    if (!QDRANT_URL.startsWith("http://") && !QDRANT_URL.startsWith("https://")) {
       throw new Error("QDRANT_URL must start with http:// or https://");
     }
 
@@ -127,9 +142,11 @@ export class QdrantPersistence {
     this.ignoreFilter = createFilterFromEnv();
     if (this.ignoreFilter) {
       const stats = this.ignoreFilter.getStats();
-      console.error(`[ClaudeIgnore] Loaded ${stats.totalPatterns} patterns ` +
-        `(universal: ${stats.universalPatterns}, global: ${stats.globalPatterns}, ` +
-        `project: ${stats.projectPatterns})`);
+      console.error(
+        `[ClaudeIgnore] Loaded ${stats.totalPatterns} patterns ` +
+          `(universal: ${stats.universalPatterns}, global: ${stats.globalPatterns}, ` +
+          `project: ${stats.projectPatterns})`
+      );
     }
   }
 
@@ -145,10 +162,13 @@ export class QdrantPersistence {
    */
   private getBM25Service(collection: string): BM25Service {
     if (!this.bm25Services.has(collection)) {
-      this.bm25Services.set(collection, new BM25Service({
-        k1: 1.2,
-        b: 0.75,
-      }));
+      this.bm25Services.set(
+        collection,
+        new BM25Service({
+          k1: 1.2,
+          b: 0.75,
+        })
+      );
     }
     return this.bm25Services.get(collection)!;
   }
@@ -166,16 +186,13 @@ export class QdrantPersistence {
         this.initialized = true;
         break;
       } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : "Unknown Qdrant error";
+        const message = error instanceof Error ? error.message : "Unknown Qdrant error";
         console.error(`Connection attempt failed: ${message}`);
         console.error("Full error:", error);
 
         retries--;
         if (retries === 0) {
-          throw new Error(
-            `Failed to connect to Qdrant after multiple attempts: ${message}`
-          );
+          throw new Error(`Failed to connect to Qdrant after multiple attempts: ${message}`);
         }
         await new Promise((resolve) => setTimeout(resolve, delay));
         delay *= 2; // Exponential backoff
@@ -191,9 +208,7 @@ export class QdrantPersistence {
     try {
       // Check if collection exists
       const collections = await this.client.getCollections();
-      const existingCollection = collections.collections.find(
-        (c) => c.name === col
-      );
+      const existingCollection = collections.collections.find((c) => c.name === col);
 
       if (!existingCollection) {
         // For new collections, detect embedding provider and create with appropriate vector size
@@ -210,9 +225,7 @@ export class QdrantPersistence {
       }
 
       // Get collection info - accept whatever vector size exists
-      const collectionInfo = (await this.client.getCollection(
-        col
-      )) as QdrantCollectionInfo;
+      const collectionInfo = (await this.client.getCollection(col)) as QdrantCollectionInfo;
 
       // Handle both old (vectors.size) and new (vectors.dense.size) collection formats
       const vectorConfig = collectionInfo.config?.params?.vectors as any;
@@ -239,7 +252,7 @@ export class QdrantPersistence {
   private getDefaultVectorSize(): number {
     // Check environment for embedding provider preference
     const provider = process.env.EMBEDDING_PROVIDER?.toLowerCase();
-    if (provider === 'voyage') {
+    if (provider === "voyage") {
       return 512; // Voyage embeddings
     }
     return 1536; // Default to OpenAI embeddings
@@ -248,7 +261,7 @@ export class QdrantPersistence {
   private updateEmbeddingModel(vectorSize: number) {
     // Update internal vector size for dummy vectors
     this.vectorSize = vectorSize;
-    
+
     // Update internal embedding model based on detected vector size
     if (vectorSize === 512) {
       // console.error("Detected Voyage embeddings (512-dim)");
@@ -279,7 +292,7 @@ export class QdrantPersistence {
 
   private hashText(text: string): string {
     // Fast hash for cache key using first 16 chars of SHA256
-    return crypto.createHash('sha256').update(text).digest('hex').substring(0, 16);
+    return crypto.createHash("sha256").update(text).digest("hex").substring(0, 16);
   }
 
   private async generateEmbedding(text: string): Promise<number[]> {
@@ -288,7 +301,7 @@ export class QdrantPersistence {
 
     // Check cache first
     const cached = this.queryEmbeddingCache.get(cacheKey);
-    if (cached && (now - cached.timestamp) < this.QUERY_CACHE_TTL_MS) {
+    if (cached && now - cached.timestamp < this.QUERY_CACHE_TTL_MS) {
       this.cacheHits++;
       return cached.embedding;
     }
@@ -297,9 +310,10 @@ export class QdrantPersistence {
 
     // Generate embedding via API
     const provider = process.env.EMBEDDING_PROVIDER?.toLowerCase();
-    const embedding = provider === 'voyage'
-      ? await this.generateVoyageEmbedding(text)
-      : await this.generateOpenAIEmbedding(text);
+    const embedding =
+      provider === "voyage"
+        ? await this.generateVoyageEmbedding(text)
+        : await this.generateOpenAIEmbedding(text);
 
     // Cache the result
     this.addToCache(cacheKey, embedding);
@@ -315,15 +329,16 @@ export class QdrantPersistence {
 
     this.queryEmbeddingCache.set(key, {
       embedding,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
   private evictOldestEntries(): void {
     // Remove oldest 25% of entries
     const entriesToRemove = Math.ceil(this.QUERY_CACHE_MAX_SIZE * 0.25);
-    const entries = Array.from(this.queryEmbeddingCache.entries())
-      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    const entries = Array.from(this.queryEmbeddingCache.entries()).sort(
+      (a, b) => a[1].timestamp - b[1].timestamp
+    );
 
     for (let i = 0; i < entriesToRemove && i < entries.length; i++) {
       this.queryEmbeddingCache.delete(entries[i][0]);
@@ -336,7 +351,7 @@ export class QdrantPersistence {
       hits: this.cacheHits,
       misses: this.cacheMisses,
       size: this.queryEmbeddingCache.size,
-      hitRatio: total > 0 ? this.cacheHits / total : 0
+      hitRatio: total > 0 ? this.cacheHits / total : 0,
     };
   }
 
@@ -349,8 +364,7 @@ export class QdrantPersistence {
       });
       return response.data[0].embedding;
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown OpenAI error";
+      const message = error instanceof Error ? error.message : "Unknown OpenAI error";
       // console.error("OpenAI embedding error:", message);
       throw new Error(`Failed to generate embeddings with OpenAI: ${message}`);
     }
@@ -364,12 +378,12 @@ export class QdrantPersistence {
       }
 
       const model = process.env.EMBEDDING_MODEL || "voyage-3.5-lite"; // Read from settings.txt via add-mcp
-      
-      const response = await fetch('https://api.voyageai.com/v1/embeddings', {
-        method: 'POST',
+
+      const response = await fetch("https://api.voyageai.com/v1/embeddings", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${voyageApiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${voyageApiKey}`,
         },
         body: JSON.stringify({
           input: text,
@@ -381,7 +395,9 @@ export class QdrantPersistence {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Voyage API error: ${response.status} ${response.statusText} - ${errorText}`);
+        throw new Error(
+          `Voyage API error: ${response.status} ${response.statusText} - ${errorText}`
+        );
       }
 
       const data = await response.json();
@@ -422,11 +438,11 @@ export class QdrantPersistence {
         entity_name: entity.name,
         metadata: {
           entity_type: entity.entityType,
-          observations: entity.observations || []
+          observations: entity.observations || [],
         },
-        content: (entity.observations || []).join(". "),  // Keep joined text for embedding
+        content: (entity.observations || []).join(". "), // Keep joined text for embedding
         file_path: undefined, // Could be extracted from observations if needed
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       };
 
       await this.client.upsert(col, {
@@ -435,7 +451,7 @@ export class QdrantPersistence {
           {
             id,
             vector: {
-              dense: vector
+              dense: vector,
             },
             payload: payload as Record<string, unknown>,
           },
@@ -468,7 +484,7 @@ export class QdrantPersistence {
       from: relation.from,
       to: relation.to,
       relation_type: relation.relationType,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
     await this.client.upsert(col, {
@@ -483,17 +499,23 @@ export class QdrantPersistence {
     });
   }
 
-  async searchSimilar(query: string, entityTypes?: string[], limit: number = 20, searchMode: 'semantic' | 'keyword' | 'hybrid' = 'semantic', collection?: string) {
+  async searchSimilar(
+    query: string,
+    entityTypes?: string[],
+    limit: number = 20,
+    searchMode: "semantic" | "keyword" | "hybrid" = "semantic",
+    collection?: string
+  ) {
     await this.connect();
     const col = this.resolveCollection(collection);
 
     try {
       switch (searchMode) {
-        case 'semantic':
+        case "semantic":
           return await this.performSemanticSearch(query, entityTypes, limit, col);
-        case 'keyword':
+        case "keyword":
           return await this.performKeywordSearch(query, entityTypes, limit, col);
-        case 'hybrid':
+        case "hybrid":
           return await this.performHybridSearch(query, entityTypes, limit, col);
         default:
           throw new Error(`Unsupported search mode: ${searchMode}`);
@@ -504,7 +526,12 @@ export class QdrantPersistence {
     }
   }
 
-  private async performSemanticSearch(query: string, entityTypes?: string[], limit: number = 20, collection?: string): Promise<SearchResult[]> {
+  private async performSemanticSearch(
+    query: string,
+    entityTypes?: string[],
+    limit: number = 20,
+    collection?: string
+  ): Promise<SearchResult[]> {
     const col = collection || this.resolveCollection();
     const queryVector = await this.generateEmbedding(query);
 
@@ -513,18 +540,23 @@ export class QdrantPersistence {
 
     const results = await this.client.search(col, {
       vector: {
-        name: 'dense',
-        vector: queryVector
+        name: "dense",
+        vector: queryVector,
       },
       limit,
       with_payload: true,
-      filter
+      filter,
     });
 
     return this.processSearchResults(results);
   }
 
-  private async performKeywordSearch(query: string, entityTypes?: string[], limit: number = 20, collection?: string): Promise<SearchResult[]> {
+  private async performKeywordSearch(
+    query: string,
+    entityTypes?: string[],
+    limit: number = 20,
+    collection?: string
+  ): Promise<SearchResult[]> {
     await this.connect();
     const col = collection || this.resolveCollection();
 
@@ -532,10 +564,15 @@ export class QdrantPersistence {
     await this.initializeBM25Index(col);
     const bm25Service = this.getBM25Service(col);
     const bm25Results = bm25Service.search(query, limit, entityTypes);
-    return bm25Results.map(result => BM25Service.convertToSearchResult(result, col));
+    return bm25Results.map((result) => BM25Service.convertToSearchResult(result, col));
   }
 
-  private async performHybridSearch(query: string, entityTypes?: string[], limit: number = 20, collection?: string): Promise<SearchResult[]> {
+  private async performHybridSearch(
+    query: string,
+    entityTypes?: string[],
+    limit: number = 20,
+    collection?: string
+  ): Promise<SearchResult[]> {
     const col = collection || this.resolveCollection();
     // console.error(`[HYBRID DEBUG] Starting hybrid search for query: "${query}", limit: ${limit}, entityTypes: ${JSON.stringify(entityTypes)}`);
 
@@ -570,7 +607,7 @@ export class QdrantPersistence {
       col,
       0.7, // semantic weight
       0.3, // keyword weight
-      60   // RRF constant
+      60 // RRF constant
     );
 
     // console.error(`[HYBRID DEBUG] Fused results: ${hybridResults.length} items`);
@@ -591,11 +628,11 @@ export class QdrantPersistence {
 
     // Separate entity types from chunk types
     const knownChunkTypes = ["metadata", "implementation"];
-    const chunkTypes = entityTypes.filter(type => knownChunkTypes.includes(type));
-    const actualEntityTypes = entityTypes.filter(type => !knownChunkTypes.includes(type));
-    
+    const chunkTypes = entityTypes.filter((type) => knownChunkTypes.includes(type));
+    const actualEntityTypes = entityTypes.filter((type) => !knownChunkTypes.includes(type));
+
     const filterConditions = [];
-    
+
     // Add entity_type filter if we have actual entity types
     if (actualEntityTypes.length > 0) {
       filterConditions.push({
@@ -603,41 +640,41 @@ export class QdrantPersistence {
           {
             key: "entity_type",
             match: {
-              any: actualEntityTypes
-            }
+              any: actualEntityTypes,
+            },
           },
           {
             key: "metadata.entity_type",
             match: {
-              any: actualEntityTypes
-            }
-          }
-        ]
+              any: actualEntityTypes,
+            },
+          },
+        ],
       });
     }
-    
+
     // Add chunk_type filter if we have chunk types
     if (chunkTypes.length > 0) {
       filterConditions.push({
         key: "chunk_type",
         match: {
-          any: chunkTypes
-        }
+          any: chunkTypes,
+        },
       });
     }
-    
+
     // Build final filter structure with OR logic
     if (filterConditions.length === 0) {
       return undefined;
     } else if (filterConditions.length === 1) {
       // Single filter condition - use must
       return {
-        must: filterConditions
+        must: filterConditions,
       };
     } else {
       // Multiple filter conditions - use should for OR logic
       return {
-        should: filterConditions
+        should: filterConditions,
       };
     }
   }
@@ -653,42 +690,48 @@ export class QdrantPersistence {
       if (payload.chunk_type) {
         // Handle v2.4 chunk format only
         // Handle both 'name' and 'entity_name' field variations
-        const entityName = payload.entity_name || (payload as any).name || 'unknown';
+        const entityName = payload.entity_name || payload.name || "unknown";
 
         // Enhanced scoring system for progressive disclosure and debugging workflow
         let score = result.score;
-        if (payload.chunk_type === 'metadata') {
+        if (payload.chunk_type === "metadata") {
           score *= 1.4; // 40% boost for metadata chunks (progressive disclosure priority)
-        } else if (payload.chunk_type === 'implementation') {
+        } else if (payload.chunk_type === "implementation") {
           score *= 1.2; // 20% boost for implementation chunks
         } else {
           // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
-          const entityType = (payload as any).metadata?.entity_type || payload.entity_type;
+          const entityType = payload.metadata?.entity_type || payload.entity_type;
           if (entityType) {
             // Research-validated entity type priorities for debugging workflow
             const entityBoosts: Record<string, number> = {
-              'function': 1.3, 'class': 1.3, 'method': 1.3, // 30% - Core executable code
-              'interface': 1.15, 'type': 1.15,               // 15% - Contracts & types (IDD)
-              'const': 1.1, 'variable': 1.1,                // 10% - Configuration & state
-              'import': 1.05                                 // 5% - Dependencies
+              function: 1.3,
+              class: 1.3,
+              method: 1.3, // 30% - Core executable code
+              interface: 1.15,
+              type: 1.15, // 15% - Contracts & types (IDD)
+              const: 1.1,
+              variable: 1.1, // 10% - Configuration & state
+              import: 1.05, // 5% - Dependencies
             };
             score *= entityBoosts[entityType] || 1.0;
           }
         }
-          
+
         // Debug payload metadata
         if (payload.metadata?.content_bm25) {
-          console.error(`[🔍 PAYLOAD DEBUG] Entity: ${entityName}, payload.metadata has content_bm25: ${payload.metadata.content_bm25}`);
+          console.error(
+            `[🔍 PAYLOAD DEBUG] Entity: ${entityName}, payload.metadata has content_bm25: ${payload.metadata.content_bm25}`
+          );
         }
-        
+
         validResults.push({
-          type: 'chunk',
+          type: "chunk",
           score: score,
           data: {
             ...payload,
             entity_name: entityName, // Normalize field name
-            ...(payload.observations && { observations: payload.observations }) // Only include observations if they exist
-          }
+            ...(payload.observations && { observations: payload.observations }), // Only include observations if they exist
+          },
         });
       }
     }
@@ -767,9 +810,9 @@ export class QdrantPersistence {
           filter: {
             must: [
               { key: "type", match: { value: "chunk" } },
-              { key: "chunk_type", match: { value: "metadata" } }
-            ]
-          }
+              { key: "chunk_type", match: { value: "metadata" } },
+            ],
+          },
         });
 
         // console.error(`[DEBUG] BM25 Batch ${batchCount}: scroll returned ${scrollResult.points.length} points, next_offset=${scrollResult.next_page_offset} (type: ${typeof scrollResult.next_page_offset})`);
@@ -782,64 +825,75 @@ export class QdrantPersistence {
 
         // console.error(`[DEBUG] BM25 Batch ${batchCount}: after processing, collected=${metadataChunks.length} total documents`);
 
-        offset = (typeof scrollResult.next_page_offset === 'string' || typeof scrollResult.next_page_offset === 'number' || typeof scrollResult.next_page_offset === 'bigint')
-          ? scrollResult.next_page_offset
-          : undefined;
+        offset =
+          typeof scrollResult.next_page_offset === "string" ||
+          typeof scrollResult.next_page_offset === "number" ||
+          typeof scrollResult.next_page_offset === "bigint"
+            ? scrollResult.next_page_offset
+            : undefined;
 
         // console.error(`[DEBUG] BM25 Batch ${batchCount}: next offset=${offset}, will continue=${offset !== null && offset !== undefined && metadataChunks.length < 50000}`);
-
       } while (offset !== null && offset !== undefined && metadataChunks.length < 50000); // Safety limit to prevent infinite loops
 
-      console.error(`[DEBUG] BM25 loop finished: ${batchCount} batches, ${metadataChunks.length} total documents collected`);
+      console.error(
+        `[DEBUG] BM25 loop finished: ${batchCount} batches, ${metadataChunks.length} total documents collected`
+      );
 
       // Convert metadata chunks to BM25 documents with complete metadata
       const bm25Documents = metadataChunks.map((chunk: any) => {
         const entityName = chunk.entity_name || chunk.id;
-        const finalContent = chunk.metadata?.content_bm25 || chunk.content || '';
+        const finalContent = chunk.metadata?.content_bm25 || chunk.content || "";
 
         // Debug final content selection
-        console.error(`[🔍 FINAL CONTENT DEBUG] Entity: ${entityName}, has_content_bm25: ${!!chunk.metadata?.content_bm25}, finalContent: "${finalContent}"`);
+        console.error(
+          `[🔍 FINAL CONTENT DEBUG] Entity: ${entityName}, has_content_bm25: ${!!chunk.metadata?.content_bm25}, finalContent: "${finalContent}"`
+        );
 
         // Debug processing (using Python pre-formatted content)
-        if (entityName?.includes('CoreIndexer') || entityName === 'CoreIndexer') {
-          console.error('[🔍 BM25 CONTENT DEBUG] Processing chunk:', {
+        if (entityName?.includes("CoreIndexer") || entityName === "CoreIndexer") {
+          console.error("[🔍 BM25 CONTENT DEBUG] Processing chunk:", {
             entity_name: entityName,
-            python_formatted_content: chunk.content?.substring(0, 150) + '...',
+            python_formatted_content: chunk.content?.substring(0, 150) + "...",
             final_content: finalContent,
             metadata_structure: {
               has_metadata: !!chunk.metadata,
               has_observations: !!chunk.metadata?.observations,
-              observations_count: chunk.metadata?.observations?.length || 0
-            }
+              observations_count: chunk.metadata?.observations?.length || 0,
+            },
           });
         }
 
         return {
           id: chunk.entity_name || chunk.id,
           content: finalContent,
-          entityType: chunk.metadata?.entity_type || chunk.entity_type || 'unknown',
+          entityType: chunk.metadata?.entity_type || chunk.entity_type || "unknown",
           observations: chunk.metadata?.observations || chunk.observations || [],
           file_path: chunk.metadata?.file_path || chunk.file_path,
           line_number: chunk.metadata?.line_number || chunk.line_number,
           end_line_number: chunk.metadata?.end_line_number || chunk.end_line_number,
-          has_implementation: chunk.metadata?.has_implementation || chunk.has_implementation || false,
+          has_implementation:
+            chunk.metadata?.has_implementation || chunk.has_implementation || false,
           ...chunk, // Include all original chunk fields including content_hash, created_at
         };
       });
 
       // Index documents in BM25 service
-      console.error(`[DEBUG] About to call bm25Service.updateDocuments with ${bm25Documents.length} documents from qdrant.ts initializeBM25Index`);
+      console.error(
+        `[DEBUG] About to call bm25Service.updateDocuments with ${bm25Documents.length} documents from qdrant.ts initializeBM25Index`
+      );
       bm25Service.updateDocuments(bm25Documents);
 
-      console.error(`BM25 index initialized with ${bm25Documents.length} metadata chunks for ${col}`);
+      console.error(
+        `BM25 index initialized with ${bm25Documents.length} metadata chunks for ${col}`
+      );
     } catch (error) {
-      console.error('Failed to initialize BM25 index:', error);
+      console.error("Failed to initialize BM25 index:", error);
     }
   }
 
   async getImplementationChunks(
     entityName: string,
-    scope: 'minimal' | 'logical' | 'dependencies' = 'minimal',
+    scope: "minimal" | "logical" | "dependencies" = "minimal",
     limit?: number,
     collection?: string
   ): Promise<SearchResult[]> {
@@ -849,16 +903,16 @@ export class QdrantPersistence {
     // Base implementation for minimal scope
     const baseResults = await this.getEntityImplementation(entityName, col);
 
-    if (scope === 'minimal') return baseResults;
+    if (scope === "minimal") return baseResults;
 
     // Extract semantic metadata for scope expansion
     const metadata = this.extractSemanticMetadata(baseResults);
 
-    if (scope === 'logical') {
+    if (scope === "logical") {
       return this.expandLogicalScope(baseResults, metadata, limit, col);
     }
 
-    if (scope === 'dependencies') {
+    if (scope === "dependencies") {
       return this.expandDependencyScope(baseResults, metadata, limit, col);
     }
 
@@ -870,17 +924,17 @@ export class QdrantPersistence {
       // Search for implementation chunks for the specific entity
       const results = await this.client.search(col, {
         vector: {
-          name: 'dense',
-          vector: new Array(this.vectorSize).fill(0) // Dummy vector for filter-only search
+          name: "dense",
+          vector: new Array(this.vectorSize).fill(0), // Dummy vector for filter-only search
         },
         limit: 50, // Optimized: Minimal scope maintained at 50 (no change needed)
         with_payload: true,
         filter: {
           must: [
             { key: "entity_name", match: { value: entityName } },
-            { key: "chunk_type", match: { value: "implementation" } }
-          ]
-        }
+            { key: "chunk_type", match: { value: "implementation" } },
+          ],
+        },
       });
 
       const validResults: SearchResult[] = [];
@@ -890,14 +944,14 @@ export class QdrantPersistence {
 
         const payload = result.payload as unknown as any;
 
-        if (payload.chunk_type === 'implementation') {
+        if (payload.chunk_type === "implementation") {
           validResults.push({
-            type: 'chunk',
+            type: "chunk",
             score: result.score,
             data: {
               ...payload,
-              has_implementation: false // Implementation chunks don't need this flag
-            }
+              has_implementation: false, // Implementation chunks don't need this flag
+            },
           });
         }
       }
@@ -926,7 +980,7 @@ export class QdrantPersistence {
         file_path: filePath,
         exceptions_handled: structuredMetadata.exceptions_handled || [],
         complexity: structuredMetadata.complexity,
-        inferred_types: structuredMetadata.inferred_types || []
+        inferred_types: structuredMetadata.inferred_types || [],
       };
     }
 
@@ -935,7 +989,7 @@ export class QdrantPersistence {
     const metadata: SemanticMetadata = {
       calls: this.extractCalls(content),
       imports_used: this.extractImports(content),
-      file_path: filePath
+      file_path: filePath,
     };
 
     return metadata;
@@ -945,17 +999,17 @@ export class QdrantPersistence {
     // Simple regex to find function calls - in production this would use AST
     const callMatches = content.match(/(\w+)\s*\(/g) || [];
     return callMatches
-      .map(match => match.replace(/\s*\($/, ''))
-      .filter(call => call.length > 1)
+      .map((match) => match.replace(/\s*\($/, ""))
+      .filter((call) => call.length > 1)
       .slice(0, 10); // Limit to prevent overwhelming results
   }
 
   private extractImports(content: string): string[] {
-    // Simple regex to find imports - in production this would use AST  
+    // Simple regex to find imports - in production this would use AST
     const importMatches = content.match(/(?:import|from)\s+(\w+)/g) || [];
     return importMatches
-      .map(match => match.replace(/(?:import|from)\s+/, ''))
-      .filter(imp => imp.length > 0)
+      .map((match) => match.replace(/(?:import|from)\s+/, ""))
+      .filter((imp) => imp.length > 0)
       .slice(0, 10); // Limit to prevent overwhelming results
   }
 
@@ -983,18 +1037,18 @@ export class QdrantPersistence {
       // Also search for private helper functions (starting with _) in the same file
       const helperResults = await this.client.search(collection, {
         vector: {
-          name: 'dense',
-          vector: new Array(this.vectorSize).fill(0)
+          name: "dense",
+          vector: new Array(this.vectorSize).fill(0),
         },
         limit: limit || 12, // Optimized: Reduced from 25 to 12 to prevent token overflow
         with_payload: true,
         filter: {
           must: [
             { key: "file_path", match: { value: metadata.file_path } },
-            { key: "chunk_type", match: { value: "implementation" } }
+            { key: "chunk_type", match: { value: "implementation" } },
           ],
-          should: searchCriteria
-        }
+          should: searchCriteria,
+        },
       });
 
       const additionalResults: SearchResult[] = [];
@@ -1003,25 +1057,25 @@ export class QdrantPersistence {
         const payload = result.payload as unknown as any;
 
         // Include if it's called by the entity OR if it's a private helper function in same file
-        const entityName = payload.entity_name || '';
+        const entityName = payload.entity_name || "";
         const isCalled = metadata.calls?.includes(entityName);
-        const isPrivateHelper = entityName.startsWith('_');
+        const isPrivateHelper = entityName.startsWith("_");
 
         if (isCalled || isPrivateHelper) {
           additionalResults.push({
-            type: 'chunk',
+            type: "chunk",
             score: result.score,
             data: {
               ...payload,
-              has_implementation: false
-            }
+              has_implementation: false,
+            },
           });
         }
       }
 
       return this.mergeAndDeduplicate([...baseResults, ...additionalResults]);
     } catch (error) {
-      console.error('Failed to expand logical scope:', error);
+      console.error("Failed to expand logical scope:", error);
       return baseResults;
     }
   }
@@ -1045,20 +1099,18 @@ export class QdrantPersistence {
       // Query for imported dependencies
       const dependencyResults = await this.client.search(collection, {
         vector: {
-          name: 'dense',
-          vector: new Array(this.vectorSize).fill(0)
+          name: "dense",
+          vector: new Array(this.vectorSize).fill(0),
         },
         limit: limit || 40,
         with_payload: true,
         filter: {
-          must: [
-            { key: "chunk_type", match: { value: "implementation" } }
-          ],
+          must: [{ key: "chunk_type", match: { value: "implementation" } }],
           should: [
             { key: "entity_name", match: { any: imports } },
-            { key: "entity_name", match: { any: calls } }
-          ]
-        }
+            { key: "entity_name", match: { any: calls } },
+          ],
+        },
       });
 
       const additionalResults: SearchResult[] = [];
@@ -1067,18 +1119,18 @@ export class QdrantPersistence {
         const payload = result.payload as unknown as any;
 
         additionalResults.push({
-          type: 'chunk',
+          type: "chunk",
           score: result.score,
           data: {
             ...payload,
-            has_implementation: false
-          }
+            has_implementation: false,
+          },
         });
       }
 
       return this.mergeAndDeduplicate([...baseResults, ...additionalResults]);
     } catch (error) {
-      console.error('Failed to expand dependency scope:', error);
+      console.error("Failed to expand dependency scope:", error);
       return baseResults;
     }
   }
@@ -1087,9 +1139,9 @@ export class QdrantPersistence {
     const entityMap = new Map<string, SearchResult>();
 
     for (const result of results) {
-      const key = result.data.entity_name || 'unknown';
+      const key = result.data.entity_name || "unknown";
       const existing = entityMap.get(key);
-      
+
       // Keep the result with the highest relevance score
       if (!existing || result.score > existing.score) {
         entityMap.set(key, result);
@@ -1099,9 +1151,9 @@ export class QdrantPersistence {
     // Return results in original insertion order for predictable results
     const deduplicated: SearchResult[] = [];
     const processedKeys = new Set<string>();
-    
+
     for (const result of results) {
-      const key = result.data.entity_name || 'unknown';
+      const key = result.data.entity_name || "unknown";
       if (!processedKeys.has(key)) {
         processedKeys.add(key);
         deduplicated.push(entityMap.get(key)!);
@@ -1111,23 +1163,26 @@ export class QdrantPersistence {
     return deduplicated;
   }
 
-  private async _checkImplementationExists(entityName: string, collection?: string): Promise<boolean> {
+  private async _checkImplementationExists(
+    entityName: string,
+    collection?: string
+  ): Promise<boolean> {
     try {
       const col = collection || this.resolveCollection();
       // Quick existence check for implementation chunks
       const results = await this.client.search(col, {
         vector: {
-          name: 'dense',
-          vector: new Array(this.vectorSize).fill(0) // Dummy vector for filter-only search
+          name: "dense",
+          vector: new Array(this.vectorSize).fill(0), // Dummy vector for filter-only search
         },
         limit: 1,
         with_payload: false,
         filter: {
           must: [
             { key: "entity_name", match: { value: entityName } },
-            { key: "chunk_type", match: { value: "implementation" } }
-          ]
-        }
+            { key: "chunk_type", match: { value: "implementation" } },
+          ],
+        },
       });
 
       return results.length > 0;
@@ -1147,11 +1202,11 @@ export class QdrantPersistence {
           {
             key: "entity_name",
             match: {
-              value: entityName
-            }
-          }
-        ]
-      }
+              value: entityName,
+            },
+          },
+        ],
+      },
     });
   }
 
@@ -1169,27 +1224,40 @@ export class QdrantPersistence {
     });
   }
 
-  async scrollAll(options?: ScrollOptions, collection?: string): Promise<KnowledgeGraph | SmartGraph> {
+  async scrollAll(
+    options?: ScrollOptions,
+    collection?: string
+  ): Promise<KnowledgeGraph | SmartGraph> {
     const col = this.resolveCollection(collection);
-    await this.initialize(col);  // Use initialize() instead of connect() to detect vector size
+    await this.initialize(col); // Use initialize() instead of connect() to detect vector size
 
-    const mode = options?.mode || 'smart';
+    const mode = options?.mode || "smart";
     const entityTypeFilter = options?.entityTypes;
     const limitPerType = options?.limit || 10000; // Allow much higher default for BM25 corpus building
 
     // First, get raw data from Qdrant with limit enforcement and entityTypes filtering
     const rawData = await this._getRawData(limitPerType, entityTypeFilter, col);
 
-    console.error(`DEBUG DEEP: rawData.entities first 3:`, rawData.entities.slice(0, 3).map(e => ({ name: e.name, entityType: e.entityType })));
-    console.error(`DEBUG DEEP: rawData.relations first 3:`, rawData.relations.slice(0, 3).map(r => ({ from: r.from, to: r.to, relationType: r.relationType })));
+    console.error(
+      `DEBUG DEEP: rawData.entities first 3:`,
+      rawData.entities.slice(0, 3).map((e) => ({ name: e.name, entityType: e.entityType }))
+    );
+    console.error(
+      `DEBUG DEEP: rawData.relations first 3:`,
+      rawData.relations
+        .slice(0, 3)
+        .map((r) => ({ from: r.from, to: r.to, relationType: r.relationType }))
+    );
 
     // Qdrant already filtered by entityTypes, no additional filtering needed
-    let filteredEntities = rawData.entities;
+    const filteredEntities = rawData.entities;
     let filteredRelations = rawData.relations;
-    
+
     // For entities mode with entityTypes filtering, filter relations to only show relevant ones
-    console.error(`DEBUG: mode="${mode}", entityTypeFilter=${JSON.stringify(entityTypeFilter)}, entities.length=${filteredEntities.length}, relations.length=${filteredRelations.length}`);
-    
+    console.error(
+      `DEBUG: mode="${mode}", entityTypeFilter=${JSON.stringify(entityTypeFilter)}, entities.length=${filteredEntities.length}, relations.length=${filteredRelations.length}`
+    );
+
     if (entityTypeFilter && entityTypeFilter.length > 0) {
       console.error(`DEBUG: Filtering relations for entityTypes filter (mode: ${mode})`);
       console.error(`DEBUG: Relations before filtering:`, filteredRelations.length);
@@ -1202,25 +1270,36 @@ export class QdrantPersistence {
       case "relationships":
         // For relationships mode, find entities that match the relation endpoints
         const relationEntityNames = new Set<string>();
-        filteredRelations.forEach(rel => {
+        filteredRelations.forEach((rel) => {
           relationEntityNames.add(rel.from);
           relationEntityNames.add(rel.to);
         });
-        console.error(`DEBUG: relationships mode - searching for entities matching relation endpoints:`, Array.from(relationEntityNames).slice(0, 5));
-        
-        // Search for entities whose names match the relation endpoints
-        const matchedEntities = await this.fetchEntitiesByNames(Array.from(relationEntityNames), limitPerType, col);
-        console.error(`DEBUG: relationships mode - found ${matchedEntities.length} matching entities from ${relationEntityNames.size} relation endpoints`);
-        
-        // Filter relations to only include those connecting the matched entities
-        const matchedEntityNames = new Set(matchedEntities.map(e => e.name));
-        const matchedRelations = filteredRelations.filter(rel => 
-          matchedEntityNames.has(rel.from) && matchedEntityNames.has(rel.to)
+        console.error(
+          `DEBUG: relationships mode - searching for entities matching relation endpoints:`,
+          Array.from(relationEntityNames).slice(0, 5)
         );
-        console.error(`DEBUG: relationships mode - filtered from ${filteredRelations.length} to ${matchedRelations.length} relations connecting matched entities`);
-        
+
+        // Search for entities whose names match the relation endpoints
+        const matchedEntities = await this.fetchEntitiesByNames(
+          Array.from(relationEntityNames),
+          limitPerType,
+          col
+        );
+        console.error(
+          `DEBUG: relationships mode - found ${matchedEntities.length} matching entities from ${relationEntityNames.size} relation endpoints`
+        );
+
+        // Filter relations to only include those connecting the matched entities
+        const matchedEntityNames = new Set(matchedEntities.map((e) => e.name));
+        const matchedRelations = filteredRelations.filter(
+          (rel) => matchedEntityNames.has(rel.from) && matchedEntityNames.has(rel.to)
+        );
+        console.error(
+          `DEBUG: relationships mode - filtered from ${filteredRelations.length} to ${matchedRelations.length} relations connecting matched entities`
+        );
+
         return { entities: matchedEntities, relations: matchedRelations };
-      
+
       case "entities":
       case "smart":
       case "raw":
@@ -1230,10 +1309,16 @@ export class QdrantPersistence {
     }
   }
 
-  private async _getRawData(limit?: number, entityTypes?: string[], col?: string): Promise<{ entities: Entity[], relations: Relation[] }> {
+  private async _getRawData(
+    limit?: number,
+    entityTypes?: string[],
+    col?: string
+  ): Promise<{ entities: Entity[]; relations: Relation[] }> {
     const collection = col || this.resolveCollection();
     // Convert v2.4 chunks back to legacy format for read_graph compatibility
-    console.error(`DEBUG _getRawData: Starting with limit=${limit}, entityTypes=${JSON.stringify(entityTypes)}`);
+    console.error(
+      `DEBUG _getRawData: Starting with limit=${limit}, entityTypes=${JSON.stringify(entityTypes)}`
+    );
     const entities: Entity[] = [];
     const relations: Relation[] = [];
     const allEntities: Entity[] = []; // Track all entities for relation type filtering
@@ -1246,9 +1331,7 @@ export class QdrantPersistence {
 
     // Build filter for entityTypes - filter entities, keep all relations
     const filter: any = {
-      must: [
-        { key: "type", match: { value: "chunk" } }
-      ]
+      must: [{ key: "type", match: { value: "chunk" } }],
     };
 
     do {
@@ -1257,17 +1340,16 @@ export class QdrantPersistence {
         offset,
         with_payload: true,
         with_vector: false,
-        filter: filter
+        filter: filter,
       });
 
-      
       for (const point of scrollResult.points) {
         if (!point.payload) continue;
         const payload = point.payload as unknown as ChunkPayload;
 
         if (payload.type === "chunk") {
-          console.error('Processing chunk:', payload.chunk_type, payload.entity_name);
-          if (payload.chunk_type === 'metadata') {
+          console.error("Processing chunk:", payload.chunk_type, payload.entity_name);
+          if (payload.chunk_type === "metadata") {
             // Only add entity if we haven't reached the limit AND passes entityTypes filter
             if (entityCount < maxEntities) {
               // Check entityTypes filter - if specified, only include matching entities
@@ -1275,58 +1357,62 @@ export class QdrantPersistence {
               if (entityTypes && entityTypes.length > 0) {
                 // Exclude chunk types from entityTypes filtering
                 const knownChunkTypes = ["metadata", "implementation"];
-                const actualEntityTypes = entityTypes.filter(type => !knownChunkTypes.includes(type));
-                
+                const actualEntityTypes = entityTypes.filter(
+                  (type) => !knownChunkTypes.includes(type)
+                );
+
                 if (actualEntityTypes.length > 0) {
                   // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
                   const entityType = (payload as any).metadata?.entity_type || payload.entity_type;
                   passesFilter = actualEntityTypes.includes(entityType);
                 }
               }
-              
+
               // Always track all entities for relation type filtering
-              const entityName = (payload as any).entity_name || (payload as any).name || 'unknown';
+              const entityName = (payload as any).entity_name || (payload as any).name || "unknown";
               // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
               const entityType = (payload as any).metadata?.entity_type || payload.entity_type;
               const entity = {
                 name: entityName,
                 entityType: entityType,
-                observations: payload.observations || (payload as any).metadata?.observations || []
+                observations: payload.observations || (payload as any).metadata?.observations || [],
               };
               allEntities.push(entity);
-              
+
               if (passesFilter) {
                 entities.push(entity);
                 entityCount++;
               }
             }
-          } else if (payload.chunk_type === 'relation') {
+          } else if (payload.chunk_type === "relation") {
             // Always process relations regardless of entity limit
             // Handle actual stored field names: entity_name -> from, relation_target -> to
             const from = (payload as any).entity_name || (payload as any).from;
             const to = (payload as any).relation_target || (payload as any).to;
             const relationType = payload.relation_type || (payload as any).relationType;
-            
-            console.error('Processing relation:', { from, to, relationType, payload });
-            
+
+            console.error("Processing relation:", { from, to, relationType, payload });
+
             if (from && to && relationType) {
               relations.push({
                 from: from,
                 to: to,
-                relationType: relationType
+                relationType: relationType,
               });
-              console.error('Added relation:', { from, to, relationType });
+              console.error("Added relation:", { from, to, relationType });
             } else {
-              console.error('Skipped relation - missing fields:', { from, to, relationType });
+              console.error("Skipped relation - missing fields:", { from, to, relationType });
             }
           }
         }
       }
 
-      offset = (typeof scrollResult.next_page_offset === 'string' || typeof scrollResult.next_page_offset === 'number') 
-        ? scrollResult.next_page_offset 
-        : undefined;
-        
+      offset =
+        typeof scrollResult.next_page_offset === "string" ||
+        typeof scrollResult.next_page_offset === "number"
+          ? scrollResult.next_page_offset
+          : undefined;
+
       // Continue scrolling for relations even after entity limit reached
       // Only exit if we've collected enough entities AND no more pages
       if (entityCount >= maxEntities && offset === null) {
@@ -1335,20 +1421,38 @@ export class QdrantPersistence {
     } while (offset !== null && offset !== undefined);
 
     // Filter relations by entity types if specified
-    const filteredRelations = this.filterRelationsByEntityTypes(relations, allEntities, entityTypes);
-    
-    console.error(`DEBUG _getRawData: Returning ${entities.length} entities, ${filteredRelations.length} relations`);
-    console.error(`DEBUG _getRawData: Sample entities:`, entities.slice(0, 2).map(e => ({ name: e.name, entityType: e.entityType })));
-    console.error(`DEBUG _getRawData: Sample relations:`, filteredRelations.slice(0, 2).map(r => ({ from: r.from, to: r.to, relationType: r.relationType })));
-    
+    const filteredRelations = this.filterRelationsByEntityTypes(
+      relations,
+      allEntities,
+      entityTypes
+    );
+
+    console.error(
+      `DEBUG _getRawData: Returning ${entities.length} entities, ${filteredRelations.length} relations`
+    );
+    console.error(
+      `DEBUG _getRawData: Sample entities:`,
+      entities.slice(0, 2).map((e) => ({ name: e.name, entityType: e.entityType }))
+    );
+    console.error(
+      `DEBUG _getRawData: Sample relations:`,
+      filteredRelations
+        .slice(0, 2)
+        .map((r) => ({ from: r.from, to: r.to, relationType: r.relationType }))
+    );
+
     return { entities, relations: filteredRelations };
   }
 
-  private _buildEntitiesResponse(entities: Entity[], relations: Relation[], limitPerType: number): KnowledgeGraph {
+  private _buildEntitiesResponse(
+    entities: Entity[],
+    relations: Relation[],
+    limitPerType: number
+  ): KnowledgeGraph {
     // Group entities by type and apply limits
     const entityByType: Record<string, Entity[]> = {};
-    
-    entities.forEach(entity => {
+
+    entities.forEach((entity) => {
       if (!entityByType[entity.entityType]) {
         entityByType[entity.entityType] = [];
       }
@@ -1367,25 +1471,29 @@ export class QdrantPersistence {
 
   private _buildRelationshipsResponse(entities: Entity[], relations: Relation[]): KnowledgeGraph {
     // Focus on key relationship types
-    const keyRelationTypes = ['inherits', 'implements', 'contains', 'imports', 'calls'];
-    const keyRelations = relations.filter(r => keyRelationTypes.includes(r.relationType));
-    
+    const keyRelationTypes = ["inherits", "implements", "contains", "imports", "calls"];
+    const keyRelations = relations.filter((r) => keyRelationTypes.includes(r.relationType));
+
     // Include entities that participate in key relationships
     const participatingEntityNames = new Set<string>();
-    keyRelations.forEach(r => {
+    keyRelations.forEach((r) => {
       participatingEntityNames.add(r.from);
       participatingEntityNames.add(r.to);
     });
 
-    const participatingEntities = entities.filter(e => participatingEntityNames.has(e.name));
+    const participatingEntities = entities.filter((e) => participatingEntityNames.has(e.name));
 
     return { entities: participatingEntities, relations: keyRelations };
   }
 
-  private _buildSmartResponse(entities: Entity[], relations: Relation[], limitPerType: number): SmartGraph {
+  private _buildSmartResponse(
+    entities: Entity[],
+    relations: Relation[],
+    limitPerType: number
+  ): SmartGraph {
     // Build comprehensive smart response
     const breakdown: Record<string, number> = {};
-    entities.forEach(e => {
+    entities.forEach((e) => {
       breakdown[e.entityType] = (breakdown[e.entityType] || 0) + 1;
     });
 
@@ -1410,12 +1518,12 @@ export class QdrantPersistence {
         totalRelations: relations.length,
         breakdown,
         keyModules,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       },
       structure,
       apiSurface,
       dependencies,
-      relations: keyRelations
+      relations: keyRelations,
     };
   }
 
@@ -1425,18 +1533,22 @@ export class QdrantPersistence {
       let scoreB = 0;
 
       // Public API bonus (not starting with underscore)
-      if (a.name && typeof a.name === 'string' && !a.name.startsWith('_')) scoreA += 5;
-      if (b.name && typeof b.name === 'string' && !b.name.startsWith('_')) scoreB += 5;
+      if (a.name && typeof a.name === "string" && !a.name.startsWith("_")) scoreA += 5;
+      if (b.name && typeof b.name === "string" && !b.name.startsWith("_")) scoreB += 5;
 
       // Has documentation bonus
-      const aHasDoc = (a.observations || []).some(obs => obs.includes('docstring') || obs.includes('Description'));
-      const bHasDoc = (b.observations || []).some(obs => obs.includes('docstring') || obs.includes('Description'));
+      const aHasDoc = (a.observations || []).some(
+        (obs) => obs.includes("docstring") || obs.includes("Description")
+      );
+      const bHasDoc = (b.observations || []).some(
+        (obs) => obs.includes("docstring") || obs.includes("Description")
+      );
       if (aHasDoc) scoreA += 10;
       if (bHasDoc) scoreB += 10;
 
       // Special method bonus (__init__, __new__)
-      if (a.name && ['__init__', '__new__'].includes(a.name)) scoreA += 8;
-      if (b.name && ['__init__', '__new__'].includes(b.name)) scoreB += 8;
+      if (a.name && ["__init__", "__new__"].includes(a.name)) scoreA += 8;
+      if (b.name && ["__init__", "__new__"].includes(b.name)) scoreB += 8;
 
       return scoreB - scoreA;
     });
@@ -1444,8 +1556,10 @@ export class QdrantPersistence {
 
   private _extractKeyModules(entities: Entity[]): string[] {
     const modules = new Set<string>();
-    entities.forEach(entity => {
-      const obs = (entity.observations || []).find(o => o.includes('Defined in:') || o.includes('file_path'));
+    entities.forEach((entity) => {
+      const obs = (entity.observations || []).find(
+        (o) => o.includes("Defined in:") || o.includes("file_path")
+      );
       if (obs) {
         const pathMatch = obs.match(/[\/\\]([^\/\\]+)[\/\\][^\/\\]+\.py/);
         if (pathMatch) {
@@ -1458,19 +1572,21 @@ export class QdrantPersistence {
 
   private _buildFileStructure(entities: Entity[]): Record<string, any> {
     const structure: Record<string, any> = {};
-    
-    entities.forEach(entity => {
-      if (entity.entityType === 'file' || entity.entityType === 'directory') {
-        const pathObs = (entity.observations || []).find(o => o.includes('file_path') || o.includes('Defined in:'));
+
+    entities.forEach((entity) => {
+      if (entity.entityType === "file" || entity.entityType === "directory") {
+        const pathObs = (entity.observations || []).find(
+          (o) => o.includes("file_path") || o.includes("Defined in:")
+        );
         if (pathObs) {
           const path = entity.name;
-          const entityCount = entities.filter(e => 
-            (e.observations || []).some(obs => obs.includes(path))
+          const entityCount = entities.filter((e) =>
+            (e.observations || []).some((obs) => obs.includes(path))
           ).length;
 
           structure[path] = {
-            type: entity.entityType as 'file' | 'directory',
-            entities: entityCount
+            type: entity.entityType,
+            entities: entityCount,
           };
         }
       }
@@ -1481,52 +1597,63 @@ export class QdrantPersistence {
 
   private _extractApiSurface(entities: Entity[], relations: Relation[], limit: number) {
     const classes = entities
-      .filter(e => e.entityType === 'class' && e.name && !e.name.startsWith('_'))
+      .filter((e) => e.entityType === "class" && e.name && !e.name.startsWith("_"))
       .slice(0, limit)
-      .map(cls => {
-        const fileObs = (cls.observations || []).find(o => o.includes('Defined in:'));
-        const lineObs = (cls.observations || []).find(o => o.includes('Line:'));
-        const docObs = (cls.observations || []).find(o => o.includes('docstring') || o.includes('Description'));
-        
+      .map((cls) => {
+        const fileObs = (cls.observations || []).find((o) => o.includes("Defined in:"));
+        const lineObs = (cls.observations || []).find((o) => o.includes("Line:"));
+        const docObs = (cls.observations || []).find(
+          (o) => o.includes("docstring") || o.includes("Description")
+        );
+
         // Find methods of this class
         const methods = entities
-          .filter(e => e.entityType === 'method' || e.entityType === 'function')
-          .filter(e => (e.observations || []).some(obs => obs.includes(cls.name)))
-          .map(m => m.name)
+          .filter((e) => e.entityType === "method" || e.entityType === "function")
+          .filter((e) => (e.observations || []).some((obs) => obs.includes(cls.name)))
+          .map((m) => m.name)
           .slice(0, 10); // Limit methods shown
 
         // Find inheritance
         const inherits = relations
-          .filter(r => r.relationType === 'inherits' && r.from === cls.name)
-          .map(r => r.to);
+          .filter((r) => r.relationType === "inherits" && r.from === cls.name)
+          .map((r) => r.to);
 
         return {
           name: cls.name,
-          file: fileObs ? fileObs.replace('Defined in:', '').trim() : '',
-          line: lineObs ? parseInt(lineObs.replace('Line:', '').trim()) : 0,
-          docstring: docObs ? docObs.replace(/.*docstring[:\s]*/, '').trim() : undefined,
+          file: fileObs ? fileObs.replace("Defined in:", "").trim() : "",
+          line: lineObs ? parseInt(lineObs.replace("Line:", "").trim()) : 0,
+          docstring: docObs ? docObs.replace(/.*docstring[:\s]*/, "").trim() : undefined,
           methods,
           inherits: inherits.length > 0 ? inherits : undefined,
-          observations: (cls.observations || []).length > 0 ? cls.observations : undefined
+          observations: (cls.observations || []).length > 0 ? cls.observations : undefined,
         };
       });
 
     const functions = entities
-      .filter(e => (e.entityType === 'function' || e.entityType === 'method') && e.name && !e.name.startsWith('_'))
+      .filter(
+        (e) =>
+          (e.entityType === "function" || e.entityType === "method") &&
+          e.name &&
+          !e.name.startsWith("_")
+      )
       .slice(0, limit)
-      .map(fn => {
-        const fileObs = (fn.observations || []).find(o => o.includes('Defined in:'));
-        const lineObs = (fn.observations || []).find(o => o.includes('Line:'));
-        const sigObs = (fn.observations || []).find(o => o.includes('Signature:') || o.includes('('));
-        const docObs = (fn.observations || []).find(o => o.includes('docstring') || o.includes('Description'));
+      .map((fn) => {
+        const fileObs = (fn.observations || []).find((o) => o.includes("Defined in:"));
+        const lineObs = (fn.observations || []).find((o) => o.includes("Line:"));
+        const sigObs = (fn.observations || []).find(
+          (o) => o.includes("Signature:") || o.includes("(")
+        );
+        const docObs = (fn.observations || []).find(
+          (o) => o.includes("docstring") || o.includes("Description")
+        );
 
         return {
           name: fn.name,
-          file: fileObs ? fileObs.replace('Defined in:', '').trim() : '',
-          line: lineObs ? parseInt(lineObs.replace('Line:', '').trim()) : 0,
+          file: fileObs ? fileObs.replace("Defined in:", "").trim() : "",
+          line: lineObs ? parseInt(lineObs.replace("Line:", "").trim()) : 0,
           signature: sigObs ? sigObs.trim() : undefined,
-          docstring: docObs ? docObs.replace(/.*docstring[:\s]*/, '').trim() : undefined,
-          observations: (fn.observations || []).length > 0 ? fn.observations : undefined
+          docstring: docObs ? docObs.replace(/.*docstring[:\s]*/, "").trim() : undefined,
+          observations: (fn.observations || []).length > 0 ? fn.observations : undefined,
         };
       });
 
@@ -1534,59 +1661,64 @@ export class QdrantPersistence {
   }
 
   private _analyzeDependencies(entities: Entity[], relations: Relation[]) {
-    const importRelations = relations.filter(r => r.relationType === 'imports');
-    
+    const importRelations = relations.filter((r) => r.relationType === "imports");
+
     // External dependencies (likely packages)
     const external = new Set<string>();
-    importRelations.forEach(rel => {
-      if (!rel.to.includes('/') && !rel.to.includes('.py')) {
+    importRelations.forEach((rel) => {
+      if (!rel.to.includes("/") && !rel.to.includes(".py")) {
         external.add(rel.to);
       }
     });
 
     // Internal dependencies
     const internal = importRelations
-      .filter(rel => rel.to.includes('/') || rel.to.includes('.py'))
-      .map(rel => ({ from: rel.from, to: rel.to }))
+      .filter((rel) => rel.to.includes("/") || rel.to.includes(".py"))
+      .map((rel) => ({ from: rel.from, to: rel.to }))
       .slice(0, 20); // Limit to key internal deps
 
     return {
       external: Array.from(external).slice(0, 20),
-      internal
+      internal,
     };
   }
 
   private _extractKeyRelations(relations: Relation[]) {
     const inheritance = relations
-      .filter(r => r.relationType === 'inherits')
-      .map(r => ({ from: r.from, to: r.to }));
+      .filter((r) => r.relationType === "inherits")
+      .map((r) => ({ from: r.from, to: r.to }));
 
     const keyUsages = relations
-      .filter(r => ['calls', 'uses', 'implements'].includes(r.relationType))
+      .filter((r) => ["calls", "uses", "implements"].includes(r.relationType))
       .slice(0, 30) // Limit for token management
-      .map(r => ({ from: r.from, to: r.to, type: r.relationType }));
+      .map((r) => ({ from: r.from, to: r.to, type: r.relationType }));
 
     return { inheritance, keyUsages };
   }
 
-  async getEntitySpecificGraph(entityName: string, mode: 'smart' | 'entities' | 'relationships' | 'raw' = 'smart', limit?: number, collection?: string): Promise<any> {
+  async getEntitySpecificGraph(
+    entityName: string,
+    mode: "smart" | "entities" | "relationships" | "raw" = "smart",
+    limit?: number,
+    collection?: string
+  ): Promise<any> {
     await this.connect();
     const col = this.resolveCollection(collection);
 
     // Step 1: Check if target entity exists
     const targetEntityResults = await this.client.search(col, {
       vector: {
-        name: 'dense',
-        vector: new Array(this.vectorSize).fill(0) // Dummy vector for filter-only search
+        name: "dense",
+        vector: new Array(this.vectorSize).fill(0), // Dummy vector for filter-only search
       },
       limit: 1,
       with_payload: true,
       filter: {
         must: [
           { key: "entity_name", match: { value: entityName } },
-          { key: "chunk_type", match: { value: "metadata" } }
-        ]
-      }
+          { key: "chunk_type", match: { value: "metadata" } },
+        ],
+      },
     });
 
     if (targetEntityResults.length === 0) {
@@ -1600,7 +1732,7 @@ export class QdrantPersistence {
     const relatedEntityNames = new Set<string>();
     relatedEntityNames.add(entityName); // Include the target entity
 
-    relatedRelations.forEach(rel => {
+    relatedRelations.forEach((rel) => {
       relatedEntityNames.add(rel.from);
       relatedEntityNames.add(rel.to);
     });
@@ -1641,11 +1773,11 @@ export class QdrantPersistence {
             {
               should: [
                 { key: "entity_name", match: { value: entityName } },
-                { key: "relation_target", match: { value: entityName } }
-              ]
-            }
-          ]
-        }
+                { key: "relation_target", match: { value: entityName } },
+              ],
+            },
+          ],
+        },
       });
 
       for (const point of scrollResult.points) {
@@ -1654,22 +1786,28 @@ export class QdrantPersistence {
 
         if (isRelationChunk(payload)) {
           relations.push({
-            from: payload.entity_name!,
+            from: payload.entity_name,
             to: payload.relation_target!,
-            relationType: payload.relation_type!
+            relationType: payload.relation_type!,
           });
         }
       }
 
-      offset = (typeof scrollResult.next_page_offset === 'string' || typeof scrollResult.next_page_offset === 'number')
-        ? scrollResult.next_page_offset
-        : undefined;
+      offset =
+        typeof scrollResult.next_page_offset === "string" ||
+        typeof scrollResult.next_page_offset === "number"
+          ? scrollResult.next_page_offset
+          : undefined;
     } while (offset !== null && offset !== undefined);
 
     return relations;
   }
 
-  private async fetchEntitiesByNames(names: string[], limit?: number, col?: string): Promise<Entity[]> {
+  private async fetchEntitiesByNames(
+    names: string[],
+    limit?: number,
+    col?: string
+  ): Promise<Entity[]> {
     const collection = col || this.resolveCollection();
     const entities: Entity[] = [];
     // Token-aware limit: balance between comprehensive data and token constraints
@@ -1679,20 +1817,18 @@ export class QdrantPersistence {
     // Build OR filter for all entity names
     const results = await this.client.search(collection, {
       vector: {
-        name: 'dense',
-        vector: new Array(this.vectorSize).fill(0) // Dummy vector for filter-only search
+        name: "dense",
+        vector: new Array(this.vectorSize).fill(0), // Dummy vector for filter-only search
       },
       limit: tokenAwareLimit, // Token-aware limit instead of hardcoded 1000
       with_payload: true,
       filter: {
-        must: [
-          { key: "chunk_type", match: { value: "metadata" } }
-        ],
-        should: names.map(name => ({
+        must: [{ key: "chunk_type", match: { value: "metadata" } }],
+        should: names.map((name) => ({
           key: "entity_name",
-          match: { value: name }
-        }))
-      }
+          match: { value: name },
+        })),
+      },
     });
 
     for (const result of results) {
@@ -1705,7 +1841,8 @@ export class QdrantPersistence {
         entities.push({
           name: payload.entity_name,
           entityType: entityType,
-          observations: (payload as any).observations || (payload as any).metadata?.observations || []
+          observations:
+            (payload as any).observations || (payload as any).metadata?.observations || [],
         });
       }
     }
@@ -1713,64 +1850,73 @@ export class QdrantPersistence {
     return entities;
   }
 
-  private filterRelationsByEntityTypes(relations: Relation[], allEntities: Entity[], entityTypes?: string[]): Relation[] {
+  private filterRelationsByEntityTypes(
+    relations: Relation[],
+    allEntities: Entity[],
+    entityTypes?: string[]
+  ): Relation[] {
     if (!entityTypes || entityTypes.length === 0) return relations;
-    
+
     // Exclude chunk types from entityTypes filtering
     const knownChunkTypes = ["metadata", "implementation"];
-    const actualEntityTypes = entityTypes.filter(type => !knownChunkTypes.includes(type));
-    
+    const actualEntityTypes = entityTypes.filter((type) => !knownChunkTypes.includes(type));
+
     if (actualEntityTypes.length === 0) return relations;
-    
+
     const entityTypeMap = new Map();
-    allEntities.forEach(entity => entityTypeMap.set(entity.name, entity.entityType));
-    
+    allEntities.forEach((entity) => entityTypeMap.set(entity.name, entity.entityType));
+
     // console.error(`[MCP DEBUG] Filtering ${relations.length} relations by entity types: ${actualEntityTypes.join(', ')}`);
-    
-    const filtered = relations.filter(relation => {
+
+    const filtered = relations.filter((relation) => {
       const fromType = entityTypeMap.get(relation.from);
       const toType = entityTypeMap.get(relation.to);
       return actualEntityTypes.includes(fromType) || actualEntityTypes.includes(toType);
     });
-    
+
     // console.error(`[MCP DEBUG] Filtered to ${filtered.length} relations involving specified entity types`);
     return filtered;
   }
 
   private filterRelationsForEntities(relations: Relation[], entities: Entity[]): Relation[] {
     // Create set of entity names for fast lookup
-    const entityNames = new Set(entities.map(e => e.name));
+    const entityNames = new Set(entities.map((e) => e.name));
     // console.error(`[MCP DEBUG] Filtering ${relations.length} relations for ${entities.length} entities`);
     // console.error(`[MCP DEBUG] Entity names:`, Array.from(entityNames).slice(0, 5));
-    
+
     // Only include relations where from OR to entity is in our filtered set
-    const filtered = relations.filter(relation => {
+    const filtered = relations.filter((relation) => {
       const matches = entityNames.has(relation.from) || entityNames.has(relation.to);
       return matches;
     });
-    
+
     // console.error(`[MCP DEBUG] Filtered to ${filtered.length} relevant relations`);
     return filtered;
   }
 
-  private formatSmartEntityGraph(targetResult: any, relatedEntities: Entity[], relationships: Relation[]): any {
+  private formatSmartEntityGraph(
+    targetResult: any,
+    relatedEntities: Entity[],
+    relationships: Relation[]
+  ): any {
     // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
-    const entityType = targetResult.payload.metadata?.entity_type || targetResult.payload.entity_type;
+    const entityType =
+      targetResult.payload.metadata?.entity_type || targetResult.payload.entity_type;
     const targetEntity = {
       name: targetResult.payload.entity_name,
       type: entityType,
-      file: targetResult.payload.metadata?.file_path || 'unknown'
+      file: targetResult.payload.metadata?.file_path || "unknown",
     };
 
     // Group entities by type
     const entityGroups: Record<string, number> = {};
-    relatedEntities.forEach(entity => {
+    relatedEntities.forEach((entity) => {
       entityGroups[entity.entityType] = (entityGroups[entity.entityType] || 0) + 1;
     });
 
     // Count relationship directions
-    const incoming = relationships.filter(r => r.to === targetEntity.name).length;
-    const outgoing = relationships.filter(r => r.from === targetEntity.name).length;
+    const incoming = relationships.filter((r) => r.to === targetEntity.name).length;
+    const outgoing = relationships.filter((r) => r.from === targetEntity.name).length;
 
     // Summarize key relationships
     const keyRelationships = this.summarizeKeyRelationships(relationships, targetEntity.name);
@@ -1784,30 +1930,36 @@ export class QdrantPersistence {
           outgoing,
           entity_types: Object.entries(entityGroups).map(([type, count]) => ({
             type,
-            count
-          }))
+            count,
+          })),
         },
-        key_relationships: keyRelationships
+        key_relationships: keyRelationships,
       },
       entities: relatedEntities.slice(0, 10), // Limit for readability
-      relations: relationships.slice(0, 50) // Limit for token management
+      relations: relationships.slice(0, 50), // Limit for token management
     };
   }
 
   private summarizeKeyRelationships(relationships: Relation[], entityName: string): any {
     const outgoing = relationships
-      .filter(r => r.from === entityName)
-      .reduce((acc, r) => {
-        acc[r.relationType] = (acc[r.relationType] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      .filter((r) => r.from === entityName)
+      .reduce(
+        (acc, r) => {
+          acc[r.relationType] = (acc[r.relationType] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
 
     const incoming = relationships
-      .filter(r => r.to === entityName)
-      .reduce((acc, r) => {
-        acc[r.relationType] = (acc[r.relationType] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      .filter((r) => r.to === entityName)
+      .reduce(
+        (acc, r) => {
+          acc[r.relationType] = (acc[r.relationType] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>
+      );
 
     return { outgoing, incoming };
   }
@@ -1834,14 +1986,16 @@ export class QdrantPersistence {
         with_payload: true,
         with_vector: false,
         filter: {
-          must: [
-            { key: 'chunk_type', match: { value: 'metadata' } }
-          ]
-        }
+          must: [{ key: "chunk_type", match: { value: "metadata" } }],
+        },
       });
 
-      console.error(`[DEBUG] Batch ${batchCount}: got ${scrollResult.points.length} points, next_offset=${scrollResult.next_page_offset}`);
-      console.error(`[DEBUG] Batch ${batchCount}: next_offset type=${typeof scrollResult.next_page_offset}, value=${scrollResult.next_page_offset}`);
+      console.error(
+        `[DEBUG] Batch ${batchCount}: got ${scrollResult.points.length} points, next_offset=${scrollResult.next_page_offset}`
+      );
+      console.error(
+        `[DEBUG] Batch ${batchCount}: next_offset type=${typeof scrollResult.next_page_offset}, value=${scrollResult.next_page_offset}`
+      );
 
       for (const point of scrollResult.points) {
         if (point.payload && collected < limit) {
@@ -1851,12 +2005,13 @@ export class QdrantPersistence {
       }
 
       // Handle all valid offset types (string, number, bigint)
-      offset = scrollResult.next_page_offset !== null && scrollResult.next_page_offset !== undefined 
-        ? scrollResult.next_page_offset as string | number
-        : undefined;
-        
+      offset =
+        scrollResult.next_page_offset !== null && scrollResult.next_page_offset !== undefined
+          ? (scrollResult.next_page_offset as string | number)
+          : undefined;
+
       console.error(`[DEBUG] Batch ${batchCount}: collected=${collected}, next_offset=${offset}`);
-      
+
       // Safety check to prevent infinite loop
       if (batchCount > 50) {
         console.error(`[DEBUG] SAFETY BREAK: Stopping after 50 batches`);
@@ -1865,36 +2020,41 @@ export class QdrantPersistence {
     } while (offset !== null && offset !== undefined && collected < limit);
 
     console.error(`BM25 index initialized with ${chunks.length} metadata chunks`);
-    console.error(`[DEBUG] Final stats: ${batchCount} batches, ${collected} collected, last_offset=${offset}`);
+    console.error(
+      `[DEBUG] Final stats: ${batchCount} batches, ${collected} collected, last_offset=${offset}`
+    );
     return chunks;
   }
 
   /**
    * Search design documents with optional type filtering
    */
-  async searchDocs(query: string, docTypes?: string[], limit: number = 10, collection?: string): Promise<DocSearchResult[]> {
+  async searchDocs(
+    query: string,
+    docTypes?: string[],
+    limit: number = 10,
+    collection?: string
+  ): Promise<DocSearchResult[]> {
     await this.connect();
     const col = this.resolveCollection(collection);
 
-    const designDocTypes = docTypes?.length ? docTypes : ['prd', 'tdd', 'adr', 'spec'];
+    const designDocTypes = docTypes?.length ? docTypes : ["prd", "tdd", "adr", "spec"];
     const queryVector = await this.generateEmbedding(query);
 
     // Filter for design document entity types
     const filter: any = {
-      must: [
-        { key: "chunk_type", match: { value: "metadata" } }
-      ],
+      must: [{ key: "chunk_type", match: { value: "metadata" } }],
       should: [
         { key: "entity_type", match: { any: designDocTypes } },
-        { key: "metadata.entity_type", match: { any: designDocTypes } }
-      ]
+        { key: "metadata.entity_type", match: { any: designDocTypes } },
+      ],
     };
 
     const results = await this.client.search(col, {
-      vector: { name: 'dense', vector: queryVector },
+      vector: { name: "dense", vector: queryVector },
       limit,
       with_payload: true,
-      filter
+      filter,
     });
 
     return this.processDocSearchResults(results);
@@ -1905,21 +2065,21 @@ export class QdrantPersistence {
 
     for (const result of results) {
       if (!result.payload) continue;
-      const payload = result.payload as any;
+      const payload = result.payload;
 
       const entityType = payload.metadata?.entity_type || payload.entity_type;
-      const entityName = payload.entity_name || payload.name || 'unknown';
-      const filePath = payload.metadata?.file_path || payload.file_path || '';
-      const content = payload.content || '';
+      const entityName = payload.entity_name || payload.name || "unknown";
+      const filePath = payload.metadata?.file_path || payload.file_path || "";
+      const content = payload.content || "";
 
-      if (!['prd', 'tdd', 'adr', 'spec'].includes(entityType)) continue;
+      if (!["prd", "tdd", "adr", "spec"].includes(entityType)) continue;
 
-      const title = entityName.includes(':')
-        ? entityName.split(':').slice(1).join(':').trim()
+      const title = entityName.includes(":")
+        ? entityName.split(":").slice(1).join(":").trim()
         : entityName;
 
       docResults.push({
-        type: 'doc',
+        type: "doc",
         score: result.score,
         data: {
           id: payload.id || `${filePath}::${entityName}`,
@@ -1929,8 +2089,8 @@ export class QdrantPersistence {
           file_path: filePath,
           section_count: payload.metadata?.section_count,
           requirement_count: payload.metadata?.requirement_count,
-          content_preview: content.substring(0, 300) + (content.length > 300 ? '...' : '')
-        }
+          content_preview: content.substring(0, 300) + (content.length > 300 ? "..." : ""),
+        },
       });
     }
 
@@ -1954,9 +2114,9 @@ export class QdrantPersistence {
         should: [
           { key: "entity_name", match: { value: docId } },
           { key: "metadata.file_path", match: { value: docId } },
-          { key: "file_path", match: { value: docId } }
-        ]
-      }
+          { key: "file_path", match: { value: docId } },
+        ],
+      },
     });
 
     // Find the main document entity
@@ -1964,9 +2124,13 @@ export class QdrantPersistence {
     for (const point of docResults.points) {
       const payload = point.payload as any;
       const entityType = payload.metadata?.entity_type || payload.entity_type;
-      if (['prd', 'tdd', 'adr', 'spec'].includes(entityType)) {
-        const entityName = payload.entity_name || '';
-        if (entityName === docId || payload.file_path === docId || payload.metadata?.file_path === docId) {
+      if (["prd", "tdd", "adr", "spec"].includes(entityType)) {
+        const entityName = payload.entity_name || "";
+        if (
+          entityName === docId ||
+          payload.file_path === docId ||
+          payload.metadata?.file_path === docId
+        ) {
           docPayload = payload;
           break;
         }
@@ -1977,7 +2141,7 @@ export class QdrantPersistence {
 
     const entityName = docPayload.entity_name || docPayload.name;
     const entityType = docPayload.metadata?.entity_type || docPayload.entity_type;
-    const filePath = docPayload.metadata?.file_path || docPayload.file_path || '';
+    const filePath = docPayload.metadata?.file_path || docPayload.file_path || "";
 
     // Get implementation chunk for full content
     const implResults = await this.client.scroll(col, {
@@ -1987,14 +2151,15 @@ export class QdrantPersistence {
       filter: {
         must: [
           { key: "entity_name", match: { value: entityName } },
-          { key: "chunk_type", match: { value: "implementation" } }
-        ]
-      }
+          { key: "chunk_type", match: { value: "implementation" } },
+        ],
+      },
     });
 
-    const fullContent = implResults.points.length > 0
-      ? (implResults.points[0].payload as any).content
-      : docPayload.content || '';
+    const fullContent =
+      implResults.points.length > 0
+        ? (implResults.points[0].payload as any).content
+        : docPayload.content || "";
 
     // Get sections
     const sections = await this.getDocSections(filePath, section, col);
@@ -2002,8 +2167,8 @@ export class QdrantPersistence {
     // Get requirements
     const requirements = await this.getDocRequirements(filePath, col);
 
-    const title = entityName.includes(':')
-      ? entityName.split(':').slice(1).join(':').trim()
+    const title = entityName.includes(":")
+      ? entityName.split(":").slice(1).join(":").trim()
       : entityName;
 
     return {
@@ -2017,12 +2182,16 @@ export class QdrantPersistence {
       requirements,
       metadata: {
         section_count: docPayload.metadata?.section_count || sections.length,
-        requirement_count: docPayload.metadata?.requirement_count || requirements.length
-      }
+        requirement_count: docPayload.metadata?.requirement_count || requirements.length,
+      },
     };
   }
 
-  private async getDocSections(filePath: string, filterSection?: string, col?: string): Promise<Array<{ name: string; level: number; content: string; line_number?: number }>> {
+  private async getDocSections(
+    filePath: string,
+    filterSection?: string,
+    col?: string
+  ): Promise<Array<{ name: string; level: number; content: string; line_number?: number }>> {
     const collection = col || this.resolveCollection();
 
     const sectionResults = await this.client.scroll(collection, {
@@ -2033,37 +2202,48 @@ export class QdrantPersistence {
         must: [{ key: "chunk_type", match: { value: "metadata" } }],
         should: [
           { key: "metadata.entity_type", match: { value: "section" } },
-          { key: "entity_type", match: { value: "section" } }
-        ]
-      }
+          { key: "entity_type", match: { value: "section" } },
+        ],
+      },
     });
 
-    const sections: Array<{ name: string; level: number; content: string; line_number?: number }> = [];
+    const sections: Array<{ name: string; level: number; content: string; line_number?: number }> =
+      [];
 
     for (const point of sectionResults.points) {
       const payload = point.payload as any;
-      const sectionFilePath = payload.metadata?.file_path || payload.file_path || '';
+      const sectionFilePath = payload.metadata?.file_path || payload.file_path || "";
 
       if (sectionFilePath !== filePath) continue;
 
-      const sectionName = payload.entity_name || payload.name || '';
+      const sectionName = payload.entity_name || payload.name || "";
 
       if (filterSection && !sectionName.toLowerCase().includes(filterSection.toLowerCase())) {
         continue;
       }
 
       sections.push({
-        name: sectionName.replace('Section: ', ''),
+        name: sectionName.replace("Section: ", ""),
         level: payload.metadata?.heading_level || 1,
-        content: payload.content || '',
-        line_number: payload.metadata?.line_number || payload.line_number
+        content: payload.content || "",
+        line_number: payload.metadata?.line_number || payload.line_number,
       });
     }
 
     return sections.sort((a, b) => (a.line_number || 0) - (b.line_number || 0));
   }
 
-  private async getDocRequirements(filePath: string, col?: string): Promise<Array<{ id: string; text: string; type: 'mandatory' | 'recommended' | 'optional' | 'general'; source_section?: string }>> {
+  private async getDocRequirements(
+    filePath: string,
+    col?: string
+  ): Promise<
+    Array<{
+      id: string;
+      text: string;
+      type: "mandatory" | "recommended" | "optional" | "general";
+      source_section?: string;
+    }>
+  > {
     const collection = col || this.resolveCollection();
 
     const reqResults = await this.client.scroll(collection, {
@@ -2074,24 +2254,33 @@ export class QdrantPersistence {
         must: [{ key: "chunk_type", match: { value: "metadata" } }],
         should: [
           { key: "metadata.entity_type", match: { value: "requirement" } },
-          { key: "entity_type", match: { value: "requirement" } }
-        ]
-      }
+          { key: "entity_type", match: { value: "requirement" } },
+        ],
+      },
     });
 
-    const requirements: Array<{ id: string; text: string; type: 'mandatory' | 'recommended' | 'optional' | 'general'; source_section?: string }> = [];
+    const requirements: Array<{
+      id: string;
+      text: string;
+      type: "mandatory" | "recommended" | "optional" | "general";
+      source_section?: string;
+    }> = [];
 
     for (const point of reqResults.points) {
       const payload = point.payload as any;
-      const reqFilePath = payload.metadata?.file_path || payload.file_path || '';
+      const reqFilePath = payload.metadata?.file_path || payload.file_path || "";
 
       if (reqFilePath !== filePath) continue;
 
       requirements.push({
-        id: payload.entity_name || payload.name || '',
-        text: payload.metadata?.full_text || payload.content || '',
-        type: (payload.metadata?.requirement_type || 'general') as 'mandatory' | 'recommended' | 'optional' | 'general',
-        source_section: payload.metadata?.parent_section
+        id: payload.entity_name || payload.name || "",
+        text: payload.metadata?.full_text || payload.content || "",
+        type: (payload.metadata?.requirement_type || "general") as
+          | "mandatory"
+          | "recommended"
+          | "optional"
+          | "general",
+        source_section: payload.metadata?.parent_section,
       });
     }
 
@@ -2109,25 +2298,25 @@ export class QdrantPersistence {
     collection?: string
   ): Promise<TicketSearchResult[]> {
     const results: TicketSearchResult[] = [];
-    const searchSources = source || ['linear', 'github'];
+    const searchSources = source || ["linear", "github"];
 
     // Search Linear if enabled
-    if (searchSources.includes('linear') && process.env.LINEAR_API_KEY) {
+    if (searchSources.includes("linear") && process.env.LINEAR_API_KEY) {
       try {
         const linearResults = await this.searchLinearTickets(query, status, labels, limit);
         results.push(...linearResults);
       } catch (error) {
-        console.error('Linear search error:', error);
+        console.error("Linear search error:", error);
       }
     }
 
     // Search GitHub if enabled
-    if (searchSources.includes('github') && process.env.GITHUB_TOKEN) {
+    if (searchSources.includes("github") && process.env.GITHUB_TOKEN) {
       try {
         const githubResults = await this.searchGitHubTickets(query, status, labels, limit);
         results.push(...githubResults);
       } catch (error) {
-        console.error('GitHub search error:', error);
+        console.error("GitHub search error:", error);
       }
     }
 
@@ -2164,11 +2353,11 @@ export class QdrantPersistence {
     `;
 
     try {
-      const response = await fetch('https://api.linear.app/graphql', {
-        method: 'POST',
+      const response = await fetch("https://api.linear.app/graphql", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': apiKey,
+          "Content-Type": "application/json",
+          Authorization: apiKey,
         },
         body: JSON.stringify({
           query: graphqlQuery,
@@ -2180,45 +2369,51 @@ export class QdrantPersistence {
         throw new Error(`Linear API error: ${response.status}`);
       }
 
-      const data = await response.json() as any;
+      const data = await response.json();
       const issues = data.data?.issues?.nodes || [];
 
       return issues
         .filter((issue: any) => {
           // Filter by query
           if (query) {
-            const searchText = `${issue.title} ${issue.description || ''}`.toLowerCase();
+            const searchText = `${issue.title} ${issue.description || ""}`.toLowerCase();
             if (!searchText.includes(query.toLowerCase())) return false;
           }
           // Filter by status
           if (status && status.length > 0) {
-            const normalizedStatus = this.normalizeLinearStatus(issue.state?.type || issue.state?.name);
+            const normalizedStatus = this.normalizeLinearStatus(
+              issue.state?.type || issue.state?.name
+            );
             if (!status.includes(normalizedStatus)) return false;
           }
           // Filter by labels
           if (labels && labels.length > 0) {
             const issueLabels = (issue.labels?.nodes || []).map((l: any) => l.name);
-            if (!labels.some(l => issueLabels.includes(l))) return false;
+            if (!labels.some((l) => issueLabels.includes(l))) return false;
           }
           return true;
         })
-        .map((issue: any): TicketSearchResult => ({
-          type: 'ticket',
-          score: 1.0,
-          data: {
-            id: issue.id,
-            identifier: issue.identifier,
-            source: 'linear',
-            title: issue.title,
-            status: this.normalizeLinearStatus(issue.state?.type || issue.state?.name) as TicketStatus,
-            priority: this.normalizeLinearPriority(issue.priority) as TicketPriority,
-            labels: (issue.labels?.nodes || []).map((l: any) => l.name),
-            url: issue.url,
-            content_preview: (issue.description || '').substring(0, 200),
-          },
-        }));
+        .map(
+          (issue: any): TicketSearchResult => ({
+            type: "ticket",
+            score: 1.0,
+            data: {
+              id: issue.id,
+              identifier: issue.identifier,
+              source: "linear",
+              title: issue.title,
+              status: this.normalizeLinearStatus(
+                issue.state?.type || issue.state?.name
+              ) as TicketStatus,
+              priority: this.normalizeLinearPriority(issue.priority) as TicketPriority,
+              labels: (issue.labels?.nodes || []).map((l: any) => l.name),
+              url: issue.url,
+              content_preview: (issue.description || "").substring(0, 200),
+            },
+          })
+        );
     } catch (error) {
-      console.error('Linear search error:', error);
+      console.error("Linear search error:", error);
       return [];
     }
   }
@@ -2233,26 +2428,26 @@ export class QdrantPersistence {
     if (!token) return [];
 
     // Build search query
-    const searchParts = ['type:issue'];
+    const searchParts = ["type:issue"];
     if (query) searchParts.push(query);
-    if (status?.includes('open') && !status?.includes('done')) {
-      searchParts.push('state:open');
-    } else if (status?.includes('done') && !status?.includes('open')) {
-      searchParts.push('state:closed');
+    if (status?.includes("open") && !status?.includes("done")) {
+      searchParts.push("state:open");
+    } else if (status?.includes("done") && !status?.includes("open")) {
+      searchParts.push("state:closed");
     }
     if (labels) {
-      labels.forEach(l => searchParts.push(`label:"${l}"`));
+      labels.forEach((l) => searchParts.push(`label:"${l}"`));
     }
 
     try {
-      const searchQuery = encodeURIComponent(searchParts.join(' '));
+      const searchQuery = encodeURIComponent(searchParts.join(" "));
       const response = await fetch(
         `https://api.github.com/search/issues?q=${searchQuery}&per_page=${limit}`,
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
           },
         }
       );
@@ -2261,34 +2456,34 @@ export class QdrantPersistence {
         throw new Error(`GitHub API error: ${response.status}`);
       }
 
-      const data = await response.json() as any;
+      const data = await response.json();
       const items = data.items || [];
 
       return items.map((item: any): TicketSearchResult => {
         // Extract owner/repo from URL
         const repoMatch = item.repository_url?.match(/repos\/([^/]+)\/([^/]+)/);
-        const owner = repoMatch?.[1] || '';
-        const repo = repoMatch?.[2] || '';
+        const owner = repoMatch?.[1] || "";
+        const repo = repoMatch?.[2] || "";
         const identifier = `${owner}/${repo}#${item.number}`;
 
         return {
-          type: 'ticket',
+          type: "ticket",
           score: 1.0,
           data: {
             id: String(item.id),
             identifier,
-            source: 'github',
+            source: "github",
             title: item.title,
-            status: item.state === 'open' ? 'open' : 'done',
+            status: item.state === "open" ? "open" : "done",
             priority: this.inferGitHubPriority(item.labels || []) as TicketPriority,
             labels: (item.labels || []).map((l: any) => l.name),
             url: item.html_url,
-            content_preview: (item.body || '').substring(0, 200),
+            content_preview: (item.body || "").substring(0, 200),
           },
         };
       });
     } catch (error) {
-      console.error('GitHub search error:', error);
+      console.error("GitHub search error:", error);
       return [];
     }
   }
@@ -2302,7 +2497,7 @@ export class QdrantPersistence {
     // Determine source from ticketId format
     // Linear: "AVO-123" or UUID
     // GitHub: "owner/repo#123"
-    if (ticketId.includes('/') && ticketId.includes('#')) {
+    if (ticketId.includes("/") && ticketId.includes("#")) {
       return this.getGitHubTicket(ticketId, includeComments, includePRs);
     } else {
       return this.getLinearTicket(ticketId, includeComments, includePRs);
@@ -2350,11 +2545,11 @@ export class QdrantPersistence {
     `;
 
     try {
-      const response = await fetch('https://api.linear.app/graphql', {
-        method: 'POST',
+      const response = await fetch("https://api.linear.app/graphql", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': apiKey,
+          "Content-Type": "application/json",
+          Authorization: apiKey,
         },
         body: JSON.stringify({
           query: graphqlQuery,
@@ -2364,14 +2559,14 @@ export class QdrantPersistence {
 
       if (!response.ok) return null;
 
-      const data = await response.json() as any;
+      const data = await response.json();
       const issue = data.data?.issue;
       if (!issue) return null;
 
       const comments: TicketComment[] = includeComments
         ? (issue.comments?.nodes || []).map((c: any) => ({
             id: c.id,
-            author: c.user?.name || 'Unknown',
+            author: c.user?.name || "Unknown",
             body: c.body,
             created_at: c.createdAt,
             updated_at: c.updatedAt,
@@ -2380,16 +2575,16 @@ export class QdrantPersistence {
 
       const linked_prs: string[] = includePRs
         ? (issue.attachments?.nodes || [])
-            .filter((a: any) => a.url?.includes('github.com') && a.url?.includes('/pull/'))
+            .filter((a: any) => a.url?.includes("github.com") && a.url?.includes("/pull/"))
             .map((a: any) => a.url)
         : [];
 
       return {
         id: issue.id,
         identifier: issue.identifier,
-        source: 'linear',
+        source: "linear",
         title: issue.title,
-        description: issue.description || '',
+        description: issue.description || "",
         status: this.normalizeLinearStatus(issue.state?.type || issue.state?.name) as TicketStatus,
         priority: this.normalizeLinearPriority(issue.priority) as TicketPriority,
         labels: (issue.labels?.nodes || []).map((l: any) => l.name),
@@ -2403,7 +2598,7 @@ export class QdrantPersistence {
         team: issue.team?.name,
       };
     } catch (error) {
-      console.error('Linear getTicket error:', error);
+      console.error("Linear getTicket error:", error);
       return null;
     }
   }
@@ -2427,16 +2622,16 @@ export class QdrantPersistence {
         `https://api.github.com/repos/${owner}/${repo}/issues/${number}`,
         {
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/vnd.github+json',
-            'X-GitHub-Api-Version': '2022-11-28',
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
           },
         }
       );
 
       if (!issueResponse.ok) return null;
 
-      const issue = await issueResponse.json() as any;
+      const issue = await issueResponse.json();
 
       // Get comments if requested
       let comments: TicketComment[] = [];
@@ -2445,18 +2640,18 @@ export class QdrantPersistence {
           `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`,
           {
             headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
+              Authorization: `Bearer ${token}`,
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
             },
           }
         );
 
         if (commentsResponse.ok) {
-          const commentsData = await commentsResponse.json() as any[];
+          const commentsData = (await commentsResponse.json()) as any[];
           comments = commentsData.map((c: any) => ({
             id: String(c.id),
-            author: c.user?.login || 'Unknown',
+            author: c.user?.login || "Unknown",
             body: c.body,
             created_at: c.created_at,
             updated_at: c.updated_at,
@@ -2474,10 +2669,10 @@ export class QdrantPersistence {
       return {
         id: String(issue.id),
         identifier: ticketId,
-        source: 'github',
+        source: "github",
         title: issue.title,
-        description: issue.body || '',
-        status: issue.state === 'open' ? 'open' : 'done',
+        description: issue.body || "",
+        status: issue.state === "open" ? "open" : "done",
         priority: this.inferGitHubPriority(issue.labels || []) as TicketPriority,
         labels: (issue.labels || []).map((l: any) => l.name),
         assignee: issue.assignee?.login,
@@ -2490,7 +2685,7 @@ export class QdrantPersistence {
         milestone: issue.milestone?.title,
       };
     } catch (error) {
-      console.error('GitHub getTicket error:', error);
+      console.error("GitHub getTicket error:", error);
       return null;
     }
   }
@@ -2499,39 +2694,39 @@ export class QdrantPersistence {
 
   private normalizeLinearStatus(state: string): string {
     const stateMap: Record<string, string> = {
-      'backlog': 'open',
-      'todo': 'open',
-      'unstarted': 'open',
-      'started': 'in_progress',
-      'in progress': 'in_progress',
-      'in review': 'in_progress',
-      'done': 'done',
-      'completed': 'done',
-      'cancelled': 'cancelled',
-      'canceled': 'cancelled',
-      'duplicate': 'cancelled',
+      backlog: "open",
+      todo: "open",
+      unstarted: "open",
+      started: "in_progress",
+      "in progress": "in_progress",
+      "in review": "in_progress",
+      done: "done",
+      completed: "done",
+      cancelled: "cancelled",
+      canceled: "cancelled",
+      duplicate: "cancelled",
     };
-    return stateMap[state?.toLowerCase()] || 'open';
+    return stateMap[state?.toLowerCase()] || "open";
   }
 
   private normalizeLinearPriority(priority: number | null): string {
     const priorityMap: Record<number, string> = {
-      0: 'none',
-      1: 'urgent',
-      2: 'high',
-      3: 'medium',
-      4: 'low',
+      0: "none",
+      1: "urgent",
+      2: "high",
+      3: "medium",
+      4: "low",
     };
-    return priorityMap[priority ?? 0] || 'none';
+    return priorityMap[priority ?? 0] || "none";
   }
 
   private inferGitHubPriority(labels: any[]): string {
     const labelNames = labels.map((l: any) => (l.name || l).toLowerCase());
-    if (labelNames.some(l => /urgent|critical|p0|priority[:\s]*0/.test(l))) return 'urgent';
-    if (labelNames.some(l => /high|important|p1|priority[:\s]*1/.test(l))) return 'high';
-    if (labelNames.some(l => /medium|normal|p2|priority[:\s]*2/.test(l))) return 'medium';
-    if (labelNames.some(l => /low|minor|p3|priority[:\s]*3/.test(l))) return 'low';
-    return 'none';
+    if (labelNames.some((l) => /urgent|critical|p0|priority[:\s]*0/.test(l))) return "urgent";
+    if (labelNames.some((l) => /high|important|p1|priority[:\s]*1/.test(l))) return "high";
+    if (labelNames.some((l) => /medium|normal|p2|priority[:\s]*2/.test(l))) return "medium";
+    if (labelNames.some((l) => /low|minor|p3|priority[:\s]*3/.test(l))) return "low";
+    return "none";
   }
 }
 // Test modification at Tue Jul 15 23:09:50 CEST 2025

@@ -89,11 +89,7 @@ export class ClaudeIgnoreFilter {
     this.stats.universalPatterns = UNIVERSAL_EXCLUDES.length;
 
     // Layer 2: Global .claudeignore
-    const globalIgnorePath = path.join(
-      os.homedir(),
-      ".claude-indexer",
-      ".claudeignore"
-    );
+    const globalIgnorePath = path.join(os.homedir(), ".claude-indexer", ".claudeignore");
     this.stats.globalIgnoreExists = fs.existsSync(globalIgnorePath);
     if (this.stats.globalIgnoreExists) {
       const globalPatterns = this.loadFromFile(globalIgnorePath);

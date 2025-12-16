@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  TokenCounter,
-  tokenCounter,
-  TOKEN_CONFIG,
-} from "../tokenCounter.js";
+import { TokenCounter, tokenCounter, TOKEN_CONFIG } from "../tokenCounter.js";
 
 describe("tokenCounter.ts", () => {
   describe("TOKEN_CONFIG", () => {
@@ -40,9 +36,7 @@ describe("tokenCounter.ts", () => {
     it("should handle nested objects", () => {
       const obj = { a: { b: { c: "value" } } };
       const json = JSON.stringify(obj);
-      expect(tokenCounter.estimateTokens(obj)).toBe(
-        Math.ceil(json.length / 4)
-      );
+      expect(tokenCounter.estimateTokens(obj)).toBe(Math.ceil(json.length / 4));
     });
   });
 
@@ -151,10 +145,7 @@ describe("tokenCounter.ts", () => {
     });
 
     it("should account for already used tokens", () => {
-      const budget = tokenCounter.consumeTokens(
-        tokenCounter.createBudget(100),
-        90
-      );
+      const budget = tokenCounter.consumeTokens(tokenCounter.createBudget(100), 90);
       expect(tokenCounter.fitsInBudget(budget, "small")).toBe(true);
       expect(tokenCounter.fitsInBudget(budget, "x".repeat(100))).toBe(false);
     });
@@ -165,9 +156,7 @@ describe("tokenCounter.ts", () => {
       const budget = tokenCounter.createBudget(1000);
       const maxSize = tokenCounter.getMaxContentSize(budget);
       // remaining * 4 * 0.8 (accounting for formatting overhead)
-      expect(maxSize).toBe(
-        Math.floor(budget.remaining * TOKEN_CONFIG.CHARS_PER_TOKEN * 0.8)
-      );
+      expect(maxSize).toBe(Math.floor(budget.remaining * TOKEN_CONFIG.CHARS_PER_TOKEN * 0.8));
     });
 
     it("should decrease as budget is consumed", () => {
@@ -259,9 +248,7 @@ describe("tokenCounter.ts", () => {
     it("should calculate correct token count", () => {
       const content = { key: "value" };
       const section = tokenCounter.createSection("test", content);
-      expect(section.tokenCount).toBe(
-        tokenCounter.estimateTokensWithFormatting(content)
-      );
+      expect(section.tokenCount).toBe(tokenCounter.estimateTokensWithFormatting(content));
     });
   });
 
@@ -379,9 +366,7 @@ describe("tokenCounter.ts", () => {
       const newInstance = new TokenCounter();
       const text = "test string";
 
-      expect(tokenCounter.estimateTokens(text)).toBe(
-        newInstance.estimateTokens(text)
-      );
+      expect(tokenCounter.estimateTokens(text)).toBe(newInstance.estimateTokens(text));
     });
   });
 });

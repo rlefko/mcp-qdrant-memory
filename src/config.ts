@@ -23,7 +23,9 @@ export function getCollectionName(override?: string): string {
     return override.trim();
   }
   if (!COLLECTION_NAME) {
-    throw new Error("No collection specified and QDRANT_COLLECTION_NAME environment variable is not set");
+    throw new Error(
+      "No collection specified and QDRANT_COLLECTION_NAME environment variable is not set"
+    );
   }
   return COLLECTION_NAME;
 }

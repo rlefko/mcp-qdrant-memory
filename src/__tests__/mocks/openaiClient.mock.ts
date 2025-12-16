@@ -45,10 +45,7 @@ export class MockOpenAI {
   private delayMs = 0;
 
   embeddings: {
-    create: (params: {
-      model: string;
-      input: string | string[];
-    }) => Promise<{
+    create: (params: { model: string; input: string | string[] }) => Promise<{
       data: Array<{ embedding: number[]; index: number }>;
       model: string;
       usage: { prompt_tokens: number; total_tokens: number };
@@ -80,8 +77,14 @@ export class MockOpenAI {
           data,
           model: params.model,
           usage: {
-            prompt_tokens: inputs.reduce((sum: number, t: string) => sum + Math.ceil(t.length / 4), 0),
-            total_tokens: inputs.reduce((sum: number, t: string) => sum + Math.ceil(t.length / 4), 0),
+            prompt_tokens: inputs.reduce(
+              (sum: number, t: string) => sum + Math.ceil(t.length / 4),
+              0
+            ),
+            total_tokens: inputs.reduce(
+              (sum: number, t: string) => sum + Math.ceil(t.length / 4),
+              0
+            ),
           },
         };
       }),

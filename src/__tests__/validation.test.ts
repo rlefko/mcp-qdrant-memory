@@ -24,18 +24,14 @@ describe("validation.ts", () => {
   describe("validateCreateEntitiesRequest", () => {
     it("should accept valid entities with camelCase entityType", () => {
       const input = {
-        entities: [
-          { name: "TestEntity", entityType: "class", observations: ["obs1"] },
-        ],
+        entities: [{ name: "TestEntity", entityType: "class", observations: ["obs1"] }],
       };
       expect(() => validateCreateEntitiesRequest(input)).not.toThrow();
     });
 
     it("should accept valid entities with snake_case entity_type", () => {
       const input = {
-        entities: [
-          { name: "TestEntity", entity_type: "function", observations: [] },
-        ],
+        entities: [{ name: "TestEntity", entity_type: "function", observations: [] }],
       };
       expect(() => validateCreateEntitiesRequest(input)).not.toThrow();
     });
@@ -74,9 +70,7 @@ describe("validation.ts", () => {
 
     it("should throw on non-array observations", () => {
       const input = {
-        entities: [
-          { name: "Test", entityType: "class", observations: "not-an-array" },
-        ],
+        entities: [{ name: "Test", entityType: "class", observations: "not-an-array" }],
       };
       expect(() => validateCreateEntitiesRequest(input)).toThrow(McpError);
     });
@@ -344,9 +338,7 @@ describe("validation.ts", () => {
     });
 
     it("should throw on invalid mode", () => {
-      expect(() => validateReadGraphRequest({ mode: "invalid" })).toThrow(
-        McpError
-      );
+      expect(() => validateReadGraphRequest({ mode: "invalid" })).toThrow(McpError);
     });
 
     it("should accept entity parameter for filtering", () => {
@@ -387,9 +379,7 @@ describe("validation.ts", () => {
 
     it("should require non-empty query", () => {
       expect(() => validateSearchDocsRequest({ query: "" })).toThrow(McpError);
-      expect(() => validateSearchDocsRequest({ query: "   " })).toThrow(
-        McpError
-      );
+      expect(() => validateSearchDocsRequest({ query: "   " })).toThrow(McpError);
     });
 
     it("should accept valid docTypes", () => {
@@ -484,12 +474,8 @@ describe("validation.ts", () => {
     });
 
     it("should require non-empty ticketId", () => {
-      expect(() => validateGetTicketRequest({ ticketId: "" })).toThrow(
-        McpError
-      );
-      expect(() => validateGetTicketRequest({ ticketId: "   " })).toThrow(
-        McpError
-      );
+      expect(() => validateGetTicketRequest({ ticketId: "" })).toThrow(McpError);
+      expect(() => validateGetTicketRequest({ ticketId: "   " })).toThrow(McpError);
     });
 
     it("should accept includeComments boolean", () => {
@@ -527,15 +513,11 @@ describe("validation.ts", () => {
     });
 
     it("should throw on string enabled", () => {
-      expect(() => validateSetPlanModeRequest({ enabled: "true" })).toThrow(
-        McpError
-      );
+      expect(() => validateSetPlanModeRequest({ enabled: "true" })).toThrow(McpError);
     });
 
     it("should throw on number enabled", () => {
-      expect(() => validateSetPlanModeRequest({ enabled: 1 })).toThrow(
-        McpError
-      );
+      expect(() => validateSetPlanModeRequest({ enabled: 1 })).toThrow(McpError);
     });
 
     it("should throw on missing enabled", () => {
