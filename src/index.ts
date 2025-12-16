@@ -632,20 +632,13 @@ class MemoryServer {
       // Plan Mode access control check (Milestone 8.4)
       const accessCheck = this.planModeGuard.checkAccess(request.params.name);
       if (!accessCheck.allowed) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              error: "PLAN_MODE_ACCESS_DENIED",
-              message: accessCheck.reason,
-              tool: accessCheck.toolName,
-              planModeActive: true,
-              blockedTools: this.planModeGuard.getBlockedTools(),
-              hint: "Use set_plan_mode({ enabled: false }) to exit Plan Mode before making changes."
-            }, null, 2)
-          }],
-          isError: true
-        };
+        const blockedTools = this.planModeGuard.getBlockedTools();
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Plan Mode Access Denied: ${accessCheck.reason}. ` +
+          `Blocked tools: ${blockedTools.join(", ")}. ` +
+          `Use set_plan_mode({ enabled: false }) to exit Plan Mode.`
+        );
       }
 
       try {
