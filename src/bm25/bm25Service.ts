@@ -106,15 +106,19 @@ export class BM25Service {
     try {
       // Prepare query keywords (split into tokens)
       const keywords = this.prepareText(query).split(/\s+/).filter(word => word.length > 0);
-      
+
       if (keywords.length === 0) {
         return [];
       }
-      
+
       // console.error(`[BM25Service] Searching for keywords: [${keywords.join(', ')}] in ${this.corpus.length} documents`);
-      
-      // Perform BM25 search  
-      const scores = (BM25 as any).default(this.corpus, keywords, {
+
+      // Perform BM25 search
+      // Handle both ESM and vitest SSR import behaviors
+      const bm25Fn = typeof (BM25 as any).default === 'function'
+        ? (BM25 as any).default
+        : BM25;
+      const scores = bm25Fn(this.corpus, keywords, {
         k1: this.config.k1!,
         b: this.config.b!,
       }) as number[];
