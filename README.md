@@ -3,6 +3,7 @@
 > **v2.8** | Semantic code memory for Claude Code via Model Context Protocol
 
 [![smithery badge](https://smithery.ai/badge/@delorenj/mcp-qdrant-memory)](https://smithery.ai/server/@delorenj/mcp-qdrant-memory)
+[![CI](https://github.com/rlefko/mcp-qdrant-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/rlefko/mcp-qdrant-memory/actions/workflows/ci.yml)
 
 This MCP server provides a knowledge graph implementation with semantic search capabilities powered by Qdrant vector database. **Enhanced version** for Claude Code memory solution.
 

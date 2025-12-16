@@ -67,12 +67,12 @@ This document tracks all phases, milestones, and tasks required to transform `mc
 ## 3. Phase Overview
 
 ```
-Phase 1: Testing Foundation     [P0] ████░░░░░░░░░░░░░░░░ 20%
-Phase 2: CI/CD Pipeline         [P0] ████░░░░░░░░░░░░░░░░ 20%
-Phase 3: Code Quality & Docs    [P1] ████████░░░░░░░░░░░░ 40%
-Phase 4: Error Handling         [P1] ████████░░░░░░░░░░░░ 40%
-Phase 5: Security & Resources   [P2] ████████████░░░░░░░░ 60%
-Phase 6: Coverage Target        [P2] ████████████████████ 100%
+Phase 1: Testing Foundation     [P0] ████████████████████ 100% (207 unit + 155 integration tests)
+Phase 2: CI/CD Pipeline         [P0] ████████░░░░░░░░░░░░ 40% (2.1 CI DONE, 2.2-2.3 pending)
+Phase 3: Code Quality & Docs    [P1] ████░░░░░░░░░░░░░░░░ 20%
+Phase 4: Error Handling         [P1] ░░░░░░░░░░░░░░░░░░░░ 0%
+Phase 5: Security & Resources   [P2] ░░░░░░░░░░░░░░░░░░░░ 0%
+Phase 6: Coverage Target        [P2] ████████████████████ 100% (6.2 Integration Tests DONE)
 ```
 
 | Phase | PRD Priority | PRD Sections | TDD Sections | Effort | Dependencies |
@@ -198,7 +198,7 @@ Phase 6: Coverage Target        [P2] ██████████████�
 **Effort:** Medium
 **Dependencies:** Phase 1 (testing must exist for CI to gate)
 
-#### Milestone 2.1: GitHub Actions CI Workflow
+#### Milestone 2.1: GitHub Actions CI Workflow ✅ DONE
 
 **PRD:** 4.2.1 | **TDD:** 3.2.1
 **Effort:** M
@@ -209,27 +209,32 @@ Phase 6: Coverage Target        [P2] ██████████████�
 - Dependency caching enabled
 
 **Tasks:**
-- [ ] Create `.github/workflows/` directory
-- [ ] Create `ci.yml` workflow
-- [ ] Configure workflow triggers (push, PR to main/master)
-- [ ] Add concurrency group with cancel-in-progress
-- [ ] Add `build` job
-  - [ ] Checkout code
-  - [ ] Setup Node.js with cache
-  - [ ] Install dependencies
-  - [ ] Run build
-  - [ ] Upload build artifacts
-- [ ] Add `lint` job
+- [x] Create `.github/workflows/` directory
+- [x] Create `ci.yml` workflow
+- [x] Configure workflow triggers (push, PR to main/master)
+- [x] Add concurrency group with cancel-in-progress
+- [x] Add `build` job
+  - [x] Checkout code
+  - [x] Setup Node.js with cache
+  - [x] Install dependencies
+  - [x] Run build
+  - [x] Upload build artifacts
+- [ ] Add `lint` job (deferred - ESLint not yet configured)
   - [ ] Run ESLint
   - [ ] Check formatting
-- [ ] Add `typecheck` job
-  - [ ] Run `tsc --noEmit`
-- [ ] Add `test` job
-  - [ ] Configure Node.js matrix (18, 20, 22)
-  - [ ] Run tests with coverage
-  - [ ] Upload coverage to Codecov (optional)
-- [ ] Add `security` job
-  - [ ] Run `npm audit --audit-level=high`
+- [x] Add `typecheck` job
+  - [x] Run `tsc --noEmit`
+- [x] Add `test` job
+  - [x] Configure Node.js matrix (18, 20, 22)
+  - [x] Run tests with coverage
+  - [x] Upload coverage artifact (Node 20)
+- [x] Add `security` job
+  - [x] Run `npm audit --audit-level=high`
+
+**Implementation Notes:**
+- Created `.github/workflows/ci.yml` with build, typecheck, test, and security jobs
+- Lint job deferred until ESLint is configured (Milestone 3.1)
+- Added CI badge to README.md
 
 #### Milestone 2.2: Release Workflow
 
@@ -850,7 +855,7 @@ Completion % = (Completed Tasks / Total Tasks) * 100
 | 1.2 Test Setup & Mocks | 11 | 0 | 0% |
 | 1.3 Core Unit Tests | 15 | 0 | 0% |
 | 1.4 Test Scripts | 7 | 0 | 0% |
-| 2.1 CI Workflow | 13 | 0 | 0% |
+| 2.1 CI Workflow | 13 | 11 | 85% |
 | 2.2 Release Workflow | 7 | 0 | 0% |
 | 2.3 Dependency Management | 7 | 0 | 0% |
 | 3.1 ESLint Config | 12 | 0 | 0% |
