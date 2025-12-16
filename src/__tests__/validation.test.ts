@@ -15,6 +15,7 @@ import {
   validateSearchTicketsRequest,
   validateGetTicketRequest,
   validateSetPlanModeRequest,
+  INPUT_LIMITS,
 } from "../validation.js";
 
 // Mock console.error to suppress debug logging
@@ -527,6 +528,231 @@ describe("validation.ts", () => {
     it("should throw on non-object input", () => {
       expect(() => validateSetPlanModeRequest(null)).toThrow(McpError);
       expect(() => validateSetPlanModeRequest("true")).toThrow(McpError);
+    });
+  });
+
+  describe("INPUT_LIMITS", () => {
+    it("should export reasonable limits", () => {
+      expect(INPUT_LIMITS.QUERY_MAX_LENGTH).toBe(10000);
+      expect(INPUT_LIMITS.ENTITIES_MAX_COUNT).toBe(1000);
+      expect(INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH).toBe(500);
+      expect(INPUT_LIMITS.OBSERVATIONS_MAX_COUNT).toBe(100);
+      expect(INPUT_LIMITS.OBSERVATION_MAX_LENGTH).toBe(50000);
+      expect(INPUT_LIMITS.RELATIONS_MAX_COUNT).toBe(1000);
+      expect(INPUT_LIMITS.ENTITY_NAMES_MAX_COUNT).toBe(1000);
+    });
+  });
+
+  describe("Input Size Validation", () => {
+    describe("validateSearchSimilarRequest size limits", () => {
+      it("should accept query at maximum length", () => {
+        const input = { query: "a".repeat(INPUT_LIMITS.QUERY_MAX_LENGTH) };
+        expect(() => validateSearchSimilarRequest(input)).not.toThrow();
+      });
+
+      it("should throw on query exceeding maximum length", () => {
+        const input = { query: "a".repeat(INPUT_LIMITS.QUERY_MAX_LENGTH + 1) };
+        expect(() => validateSearchSimilarRequest(input)).toThrow(McpError);
+        expect(() => validateSearchSimilarRequest(input)).toThrow(/exceeds maximum length/);
+      });
+    });
+
+    describe("validateCreateEntitiesRequest size limits", () => {
+      it("should accept entities at maximum count", () => {
+        const entities = Array(100)
+          .fill(null)
+          .map((_, i) => ({
+            name: `Entity${i}`,
+            entityType: "class",
+            observations: [],
+          }));
+        expect(() => validateCreateEntitiesRequest({ entities })).not.toThrow();
+      });
+
+      it("should throw on entities exceeding maximum count", () => {
+        const entities = Array(INPUT_LIMITS.ENTITIES_MAX_COUNT + 1)
+          .fill(null)
+          .map((_, i) => ({
+            name: `Entity${i}`,
+            entityType: "class",
+            observations: [],
+          }));
+        expect(() => validateCreateEntitiesRequest({ entities })).toThrow(McpError);
+        expect(() => validateCreateEntitiesRequest({ entities })).toThrow(/exceeds maximum/);
+      });
+
+      it("should accept entity name at maximum length", () => {
+        const input = {
+          entities: [
+            {
+              name: "a".repeat(INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH),
+              entityType: "class",
+              observations: [],
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).not.toThrow();
+      });
+
+      it("should throw on entity name exceeding maximum length", () => {
+        const input = {
+          entities: [
+            {
+              name: "a".repeat(INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH + 1),
+              entityType: "class",
+              observations: [],
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(McpError);
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(/Entity name/);
+      });
+
+      it("should accept observations at maximum count per entity", () => {
+        const input = {
+          entities: [
+            {
+              name: "TestEntity",
+              entityType: "class",
+              observations: Array(INPUT_LIMITS.OBSERVATIONS_MAX_COUNT).fill("obs"),
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).not.toThrow();
+      });
+
+      it("should throw on observations exceeding maximum count", () => {
+        const input = {
+          entities: [
+            {
+              name: "TestEntity",
+              entityType: "class",
+              observations: Array(INPUT_LIMITS.OBSERVATIONS_MAX_COUNT + 1).fill("obs"),
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(McpError);
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(/too many observations/);
+      });
+
+      it("should accept observation at maximum length", () => {
+        const input = {
+          entities: [
+            {
+              name: "TestEntity",
+              entityType: "class",
+              observations: ["a".repeat(INPUT_LIMITS.OBSERVATION_MAX_LENGTH)],
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).not.toThrow();
+      });
+
+      it("should throw on observation exceeding maximum length", () => {
+        const input = {
+          entities: [
+            {
+              name: "TestEntity",
+              entityType: "class",
+              observations: ["a".repeat(INPUT_LIMITS.OBSERVATION_MAX_LENGTH + 1)],
+            },
+          ],
+        };
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(McpError);
+        expect(() => validateCreateEntitiesRequest(input)).toThrow(/Observation/);
+      });
+    });
+
+    describe("validateCreateRelationsRequest size limits", () => {
+      it("should accept relations at maximum count", () => {
+        const relations = Array(100)
+          .fill(null)
+          .map((_, i) => ({
+            from: `A${i}`,
+            to: `B${i}`,
+            relationType: "uses",
+          }));
+        expect(() => validateCreateRelationsRequest({ relations })).not.toThrow();
+      });
+
+      it("should throw on relations exceeding maximum count", () => {
+        const relations = Array(INPUT_LIMITS.RELATIONS_MAX_COUNT + 1)
+          .fill(null)
+          .map((_, i) => ({
+            from: `A${i}`,
+            to: `B${i}`,
+            relationType: "uses",
+          }));
+        expect(() => validateCreateRelationsRequest({ relations })).toThrow(McpError);
+        expect(() => validateCreateRelationsRequest({ relations })).toThrow(/exceeds maximum/);
+      });
+    });
+
+    describe("validateAddObservationsRequest size limits", () => {
+      it("should throw on entity name exceeding maximum length", () => {
+        const input = {
+          observations: [
+            {
+              entityName: "a".repeat(INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH + 1),
+              contents: ["observation"],
+            },
+          ],
+        };
+        expect(() => validateAddObservationsRequest(input)).toThrow(McpError);
+        expect(() => validateAddObservationsRequest(input)).toThrow(/Entity name/);
+      });
+
+      it("should throw on contents exceeding maximum count", () => {
+        const input = {
+          observations: [
+            {
+              entityName: "TestEntity",
+              contents: Array(INPUT_LIMITS.OBSERVATIONS_MAX_COUNT + 1).fill("obs"),
+            },
+          ],
+        };
+        expect(() => validateAddObservationsRequest(input)).toThrow(McpError);
+        expect(() => validateAddObservationsRequest(input)).toThrow(/too many contents/);
+      });
+
+      it("should throw on content exceeding maximum length", () => {
+        const input = {
+          observations: [
+            {
+              entityName: "TestEntity",
+              contents: ["a".repeat(INPUT_LIMITS.OBSERVATION_MAX_LENGTH + 1)],
+            },
+          ],
+        };
+        expect(() => validateAddObservationsRequest(input)).toThrow(McpError);
+        expect(() => validateAddObservationsRequest(input)).toThrow(/exceeds maximum/);
+      });
+    });
+
+    describe("validateDeleteEntitiesRequest size limits", () => {
+      it("should accept entity names at maximum count", () => {
+        const entityNames = Array(100).fill("Entity");
+        expect(() => validateDeleteEntitiesRequest({ entityNames })).not.toThrow();
+      });
+
+      it("should throw on entity names exceeding maximum count", () => {
+        const entityNames = Array(INPUT_LIMITS.ENTITY_NAMES_MAX_COUNT + 1).fill("Entity");
+        expect(() => validateDeleteEntitiesRequest({ entityNames })).toThrow(McpError);
+        expect(() => validateDeleteEntitiesRequest({ entityNames })).toThrow(/exceeds maximum/);
+      });
+    });
+
+    describe("validateSearchDocsRequest size limits", () => {
+      it("should accept query at maximum length", () => {
+        const input = { query: "a".repeat(INPUT_LIMITS.QUERY_MAX_LENGTH) };
+        expect(() => validateSearchDocsRequest(input)).not.toThrow();
+      });
+
+      it("should throw on query exceeding maximum length", () => {
+        const input = { query: "a".repeat(INPUT_LIMITS.QUERY_MAX_LENGTH + 1) };
+        expect(() => validateSearchDocsRequest(input)).toThrow(McpError);
+        expect(() => validateSearchDocsRequest(input)).toThrow(/exceeds maximum length/);
+      });
     });
   });
 });

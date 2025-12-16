@@ -225,6 +225,7 @@ export class BM25Service {
 
   /**
    * Prepare text for BM25 processing (tokenization and normalization)
+   * Uses Unicode-aware regex to preserve international characters (Chinese, Japanese, Korean, etc.)
    */
   private prepareText(text: string): string {
     if (!text || typeof text !== "string") {
@@ -233,10 +234,11 @@ export class BM25Service {
 
     const tokens: string[] = [];
 
-    // Original tokens (current behavior)
+    // Original tokens with Unicode support
+    // \p{L} matches any Unicode letter, \p{N} matches any Unicode number
     const originalTokens = text
       .toLowerCase()
-      .replace(/[^\w\s]/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ") // Unicode-aware: preserves letters and numbers
       .replace(/\s+/g, " ")
       .trim()
       .split(" ")
@@ -244,12 +246,12 @@ export class BM25Service {
 
     tokens.push(...originalTokens);
 
-    // Add camelCase split tokens
+    // Add camelCase split tokens (primarily for ASCII, but Unicode-safe)
     const splitTokens = text
       .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → camel Case
       .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2") // XMLParser → XML Parser
       .toLowerCase()
-      .replace(/[^\w\s]/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ") // Unicode-aware: preserves letters and numbers
       .replace(/\s+/g, " ")
       .trim()
       .split(" ")

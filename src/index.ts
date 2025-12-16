@@ -1019,10 +1019,14 @@ class MemoryServer {
 
         return response;
       } catch (error) {
-        throw new McpError(
+        // Preserve error context for debugging by attaching original error as cause
+        const mcpError = new McpError(
           ErrorCode.InternalError,
           error instanceof Error ? error.message : String(error)
         );
+        // Attach original error for stack trace preservation
+        (mcpError as any).cause = error;
+        throw mcpError;
       }
     });
   }

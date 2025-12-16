@@ -349,6 +349,109 @@ describe("bm25Service.ts", () => {
         expect(result.data.entity_name).toBe("MyClass");
       });
     });
+
+    describe("Unicode support", () => {
+      it("should handle Chinese characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "AuthService", content: "用户认证服务", entityType: "class" },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("认证");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+
+      it("should handle Japanese characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "AuthService", content: "ユーザー認証サービス", entityType: "class" },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("認証");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+
+      it("should handle Korean characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "AuthService", content: "사용자 인증 서비스", entityType: "class" },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("인증");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+
+      it("should handle mixed ASCII and Unicode", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "MixedService", content: "User authentication 用户认证", entityType: "class" },
+          { id: "AsciiOnly", content: "plain english content", entityType: "class" },
+          { id: "UnicodeOnly", content: "纯中文内容", entityType: "class" },
+        ]);
+
+        // Search for Chinese term in mixed content
+        const chineseResults = service.search("用户");
+        expect(chineseResults.length).toBeGreaterThan(0);
+        expect(chineseResults[0].document.id).toBe("MixedService");
+
+        // Search for English term in mixed content
+        const englishResults = service.search("authentication");
+        expect(englishResults.length).toBeGreaterThan(0);
+        expect(englishResults[0].document.id).toBe("MixedService");
+      });
+
+      it("should handle Cyrillic characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          {
+            id: "AuthService",
+            content: "сервис аутентификации пользователей",
+            entityType: "class",
+          },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("аутентификации");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+
+      it("should handle Arabic characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "AuthService", content: "خدمة مصادقة المستخدم", entityType: "class" },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("مصادقة");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+
+      it("should preserve accented Latin characters", () => {
+        service.clearDocuments();
+        service.addDocuments([
+          { id: "AuthService", content: "servicio de autenticación", entityType: "class" },
+          { id: "OtherService", content: "other content", entityType: "class" },
+          { id: "ThirdService", content: "different data", entityType: "class" },
+        ]);
+
+        const results = service.search("autenticación");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].document.id).toBe("AuthService");
+      });
+    });
   });
 
   describe("HybridSearchFusion", () => {

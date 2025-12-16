@@ -1,6 +1,27 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import type { Entity, Relation } from "./types.js";
 
+/**
+ * Input size limits to prevent DoS attacks via oversized payloads.
+ * These limits are based on reasonable maximum sizes for semantic code memory operations.
+ */
+export const INPUT_LIMITS = {
+  /** Maximum length of a search query string */
+  QUERY_MAX_LENGTH: 10000,
+  /** Maximum number of entities in a single create request */
+  ENTITIES_MAX_COUNT: 1000,
+  /** Maximum length of an entity name */
+  ENTITY_NAME_MAX_LENGTH: 500,
+  /** Maximum number of observations per entity */
+  OBSERVATIONS_MAX_COUNT: 100,
+  /** Maximum length of a single observation */
+  OBSERVATION_MAX_LENGTH: 50000,
+  /** Maximum number of relations in a single create request */
+  RELATIONS_MAX_COUNT: 1000,
+  /** Maximum number of entity names in a delete request */
+  ENTITY_NAMES_MAX_COUNT: 1000,
+} as const;
+
 export interface CreateEntitiesRequest {
   entities: Entity[];
   collection?: string;
@@ -116,6 +137,14 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
     throw new McpError(ErrorCode.InvalidParams, "Invalid entities array");
   }
 
+  // Input size validation: check entity count
+  if (entities.length > INPUT_LIMITS.ENTITIES_MAX_COUNT) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Entities array exceeds maximum of ${INPUT_LIMITS.ENTITIES_MAX_COUNT} items (received ${entities.length})`
+    );
+  }
+
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (!isEntity(entity)) {
@@ -125,6 +154,31 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
       console.error(`DEBUG: Entity ${i} entity_type:`, entity?.entity_type);
       console.error(`DEBUG: Entity ${i} observations:`, entity?.observations);
       throw new McpError(ErrorCode.InvalidParams, `Invalid entity at index ${i}`);
+    }
+
+    // Input size validation: check entity name length
+    if (entity.name.length > INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Entity name at index ${i} exceeds maximum of ${INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH} characters`
+      );
+    }
+
+    // Input size validation: check observations count and length
+    if (entity.observations.length > INPUT_LIMITS.OBSERVATIONS_MAX_COUNT) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Entity at index ${i} has too many observations (max ${INPUT_LIMITS.OBSERVATIONS_MAX_COUNT})`
+      );
+    }
+
+    for (let j = 0; j < entity.observations.length; j++) {
+      if (entity.observations[j].length > INPUT_LIMITS.OBSERVATION_MAX_LENGTH) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Observation ${j} in entity ${i} exceeds maximum of ${INPUT_LIMITS.OBSERVATION_MAX_LENGTH} characters`
+        );
+      }
     }
   }
 
@@ -145,6 +199,14 @@ export function validateCreateRelationsRequest(args: unknown): CreateRelationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid relations array");
   }
 
+  // Input size validation: check relations count
+  if (relations.length > INPUT_LIMITS.RELATIONS_MAX_COUNT) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Relations array exceeds maximum of ${INPUT_LIMITS.RELATIONS_MAX_COUNT} items (received ${relations.length})`
+    );
+  }
+
   if (collection !== undefined && typeof collection !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "collection must be a string");
   }
@@ -162,9 +224,37 @@ export function validateAddObservationsRequest(args: unknown): AddObservationsRe
     throw new McpError(ErrorCode.InvalidParams, "Invalid observations array");
   }
 
-  for (const obs of observations) {
+  for (let i = 0; i < observations.length; i++) {
+    const obs = observations[i];
     if (!isRecord(obs) || typeof obs.entityName !== "string" || !isStringArray(obs.contents)) {
       throw new McpError(ErrorCode.InvalidParams, "Invalid observation format");
+    }
+
+    // Input size validation: check entity name length
+    if (obs.entityName.length > INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Entity name at index ${i} exceeds maximum of ${INPUT_LIMITS.ENTITY_NAME_MAX_LENGTH} characters`
+      );
+    }
+
+    // Input size validation: check observations count
+    const contents = obs.contents;
+    if (contents.length > INPUT_LIMITS.OBSERVATIONS_MAX_COUNT) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Observation at index ${i} has too many contents (max ${INPUT_LIMITS.OBSERVATIONS_MAX_COUNT})`
+      );
+    }
+
+    // Input size validation: check each observation content length
+    for (let j = 0; j < contents.length; j++) {
+      if (contents[j].length > INPUT_LIMITS.OBSERVATION_MAX_LENGTH) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Content ${j} in observation ${i} exceeds maximum of ${INPUT_LIMITS.OBSERVATION_MAX_LENGTH} characters`
+        );
+      }
     }
   }
 
@@ -186,6 +276,14 @@ export function validateDeleteEntitiesRequest(args: unknown): DeleteEntitiesRequ
   const { entityNames, collection } = args;
   if (!isStringArray(entityNames)) {
     throw new McpError(ErrorCode.InvalidParams, "Invalid entityNames array");
+  }
+
+  // Input size validation: check entity names count
+  if (entityNames.length > INPUT_LIMITS.ENTITY_NAMES_MAX_COUNT) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Entity names array exceeds maximum of ${INPUT_LIMITS.ENTITY_NAMES_MAX_COUNT} items (received ${entityNames.length})`
+    );
   }
 
   if (collection !== undefined && typeof collection !== "string") {
@@ -246,6 +344,14 @@ export function validateSearchSimilarRequest(args: unknown): SearchSimilarReques
   const { query, entityTypes, limit, searchMode } = args;
   if (typeof query !== "string") {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid query string");
+  }
+
+  // Input size validation: check query length
+  if (query.length > INPUT_LIMITS.QUERY_MAX_LENGTH) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Query exceeds maximum length of ${INPUT_LIMITS.QUERY_MAX_LENGTH} characters (received ${query.length})`
+    );
   }
 
   if (limit !== undefined && (typeof limit !== "number" || limit <= 0)) {
@@ -370,6 +476,14 @@ export function validateSearchDocsRequest(args: unknown): SearchDocsRequest {
 
   if (typeof query !== "string" || query.trim().length === 0) {
     throw new McpError(ErrorCode.InvalidParams, "Missing or invalid query string");
+  }
+
+  // Input size validation: check query length
+  if (query.length > INPUT_LIMITS.QUERY_MAX_LENGTH) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Query exceeds maximum length of ${INPUT_LIMITS.QUERY_MAX_LENGTH} characters (received ${query.length})`
+    );
   }
 
   const validDocTypes = ["prd", "tdd", "adr", "spec"];
