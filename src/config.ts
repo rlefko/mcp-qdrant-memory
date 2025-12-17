@@ -1,13 +1,15 @@
+import { configLogger } from "./logger.js";
+
 // Check for required environment variables
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 if (!OPENAI_API_KEY) {
-  console.error("Error: OPENAI_API_KEY environment variable is required");
+  configLogger.error("Missing required environment variable", null, { variable: "OPENAI_API_KEY" });
   process.exit(1);
 }
 
 const QDRANT_URL = process.env.QDRANT_URL;
 if (!QDRANT_URL) {
-  console.error("Error: QDRANT_URL environment variable is required");
+  configLogger.error("Missing required environment variable", null, { variable: "QDRANT_URL" });
   process.exit(1);
 }
 

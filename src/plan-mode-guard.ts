@@ -8,6 +8,8 @@
  * Milestone 8.4: Plan Mode Tool Access Control
  */
 
+import { planModeLogger } from "./logger.js";
+
 /**
  * Result of an access control check
  */
@@ -67,7 +69,8 @@ const PLAN_MODE_ENV_VAR = "CLAUDE_PLAN_MODE";
  * // Check if a tool is allowed
  * const result = guard.checkAccess("create_entities");
  * if (!result.allowed) {
- *   console.error(result.reason);
+ *   // Handle blocked tool
+ *   throw new Error(result.reason);
  * }
  *
  * // Explicitly enable/disable Plan Mode
@@ -81,9 +84,9 @@ export class PlanModeGuard {
   constructor() {
     this.isPlanModeActive = this.detectFromEnvironment();
     if (this.isPlanModeActive) {
-      console.error(
-        `[PlanModeGuard] Plan Mode detected from environment variable ${PLAN_MODE_ENV_VAR}`
-      );
+      planModeLogger.info("Plan Mode detected from environment", {
+        envVar: PLAN_MODE_ENV_VAR,
+      });
     }
   }
 
@@ -103,9 +106,10 @@ export class PlanModeGuard {
   setPlanMode(enabled: boolean): void {
     const previousState = this.isPlanModeActive;
     this.isPlanModeActive = enabled;
-    console.error(
-      `[PlanModeGuard] Plan Mode ${enabled ? "enabled" : "disabled"} (was: ${previousState})`
-    );
+    planModeLogger.info("Plan Mode state changed", {
+      enabled,
+      previousState,
+    });
   }
 
   /**

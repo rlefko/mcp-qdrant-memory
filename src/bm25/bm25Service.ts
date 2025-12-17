@@ -1,5 +1,6 @@
 import BM25 from "okapibm25";
 import type { SearchResult } from "../types.js";
+import { bm25Logger } from "../logger.js";
 
 export interface BM25Config {
   k1?: number;
@@ -44,7 +45,7 @@ export class BM25Service {
    * Add documents to the BM25 index
    */
   addDocuments(documents: BM25Document[]): void {
-    console.error(`[BM25Service] Adding ${documents.length} documents to corpus`);
+    bm25Logger.info("Adding documents to corpus", { count: documents.length });
 
     this.documents = [...this.documents, ...documents];
     this.corpus = [
@@ -78,7 +79,7 @@ export class BM25Service {
       }),
     ];
 
-    console.error(`[BM25Service] Total corpus size: ${this.corpus.length} documents`);
+    bm25Logger.info("Corpus update complete", { totalDocuments: this.corpus.length });
     this.isIndexed = false;
   }
 
@@ -174,7 +175,7 @@ export class BM25Service {
       // Sort by score (descending) and limit results
       return filteredResults.sort((a, b) => b.score - a.score).slice(0, limit);
     } catch (error) {
-      console.error("BM25 search error:", error);
+      bm25Logger.error("BM25 search error", error instanceof Error ? error : null);
       return [];
     }
   }

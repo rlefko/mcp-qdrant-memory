@@ -5,6 +5,8 @@
  * pending request cancellation for graceful process termination.
  */
 
+import { shutdownLogger } from "./logger.js";
+
 export interface ShutdownOptions {
   /** Grace period in milliseconds before forced exit (default: 10000) */
   gracePeriodMs?: number;
@@ -38,7 +40,7 @@ export class ShutdownManager {
    */
   register(callback: () => Promise<void>): void {
     if (this.shuttingDown) {
-      console.error("[ShutdownManager] Cannot register callback during shutdown");
+      shutdownLogger.warn("Cannot register callback during shutdown");
       return;
     }
     this.cleanupCallbacks.push(callback);
@@ -102,14 +104,14 @@ export class ShutdownManager {
    */
   installSignalHandlers(): void {
     if (this.signalHandlersInstalled) {
-      console.error("[ShutdownManager] Signal handlers already installed");
+      shutdownLogger.warn("Signal handlers already installed");
       return;
     }
 
     const handleSignal = (signal: string) => {
-      console.error(`[ShutdownManager] Received ${signal}, initiating graceful shutdown...`);
+      shutdownLogger.info("Received signal, initiating graceful shutdown", { signal });
       this.shutdown(signal).catch((error) => {
-        console.error("[ShutdownManager] Shutdown error:", error);
+        shutdownLogger.error("Shutdown error", error instanceof Error ? error : null);
         process.exit(1);
       });
     };
@@ -143,12 +145,12 @@ export class ShutdownManager {
 
   private async performShutdown(signal?: string): Promise<void> {
     const startTime = Date.now();
-    console.error(`[ShutdownManager] Starting shutdown${signal ? ` (signal: ${signal})` : ""}...`);
+    shutdownLogger.info("Starting shutdown", { signal });
 
     // Step 1: Cancel all pending requests
     const pendingCount = this.pendingRequests.size;
     if (pendingCount > 0) {
-      console.error(`[ShutdownManager] Cancelling ${pendingCount} pending request(s)...`);
+      shutdownLogger.info("Cancelling pending requests", { count: pendingCount });
       for (const controller of this.pendingRequests) {
         try {
           controller.abort(new Error("Server shutdown"));
@@ -162,26 +164,27 @@ export class ShutdownManager {
     // Step 2: Execute cleanup callbacks with timeout
     const cleanupCount = this.cleanupCallbacks.length;
     if (cleanupCount > 0) {
-      console.error(`[ShutdownManager] Executing ${cleanupCount} cleanup callback(s)...`);
+      shutdownLogger.info("Executing cleanup callbacks", { count: cleanupCount });
 
       const cleanupPromises = this.cleanupCallbacks.map(async (callback, index) => {
         try {
           await callback();
-          console.error(
-            `[ShutdownManager] Cleanup callback ${index + 1}/${cleanupCount} completed`
-          );
+          shutdownLogger.debug("Cleanup callback completed", {
+            current: index + 1,
+            total: cleanupCount,
+          });
         } catch (error) {
-          console.error(
-            `[ShutdownManager] Cleanup callback ${index + 1}/${cleanupCount} failed:`,
-            error
-          );
+          shutdownLogger.error("Cleanup callback failed", error instanceof Error ? error : null, {
+            current: index + 1,
+            total: cleanupCount,
+          });
         }
       });
 
       // Wait for all cleanup callbacks with grace period timeout
       const timeoutPromise = new Promise<void>((resolve) => {
         setTimeout(() => {
-          console.error("[ShutdownManager] Grace period expired, forcing exit...");
+          shutdownLogger.warn("Grace period expired, forcing exit");
           resolve();
         }, this.options.gracePeriodMs);
       });
@@ -190,7 +193,7 @@ export class ShutdownManager {
     }
 
     const elapsed = Date.now() - startTime;
-    console.error(`[ShutdownManager] Shutdown completed in ${elapsed}ms`);
+    shutdownLogger.info("Shutdown completed", { duration_ms: elapsed });
 
     // Step 3: Exit process if configured
     if (this.options.exitAfterShutdown) {

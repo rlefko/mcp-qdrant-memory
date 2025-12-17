@@ -1,5 +1,6 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import type { Entity, Relation } from "./types.js";
+import { validationLogger } from "./logger.js";
 
 /**
  * Input size limits to prevent DoS attacks via oversized payloads.
@@ -127,13 +128,13 @@ function isRelation(value: unknown): value is Relation {
 
 export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequest {
   if (!isRecord(args)) {
-    console.error("DEBUG: Invalid request format - not a record:", typeof args, args);
+    validationLogger.debug("Invalid request format - not a record", { type: typeof args });
     throw new McpError(ErrorCode.InvalidParams, "Invalid request format");
   }
 
   const { entities, collection } = args;
   if (!Array.isArray(entities)) {
-    console.error("DEBUG: entities is not an array:", typeof entities, entities);
+    validationLogger.debug("entities is not an array", { type: typeof entities });
     throw new McpError(ErrorCode.InvalidParams, "Invalid entities array");
   }
 
@@ -148,11 +149,13 @@ export function validateCreateEntitiesRequest(args: unknown): CreateEntitiesRequ
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
     if (!isEntity(entity)) {
-      console.error(`DEBUG: Entity ${i} failed validation:`, entity);
-      console.error(`DEBUG: Entity ${i} name type:`, typeof entity?.name);
-      console.error(`DEBUG: Entity ${i} entityType:`, entity?.entityType);
-      console.error(`DEBUG: Entity ${i} entity_type:`, entity?.entity_type);
-      console.error(`DEBUG: Entity ${i} observations:`, entity?.observations);
+      validationLogger.debug("Entity validation failed", {
+        index: i,
+        nameType: typeof entity?.name,
+        entityType: entity?.entityType,
+        entity_type: entity?.entity_type,
+        hasObservations: Array.isArray(entity?.observations),
+      });
       throw new McpError(ErrorCode.InvalidParams, `Invalid entity at index ${i}`);
     }
 

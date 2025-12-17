@@ -10,6 +10,7 @@
  */
 
 import { minimatch } from "minimatch";
+import { ignoreFilterLogger } from "../logger.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -121,7 +122,7 @@ export class ClaudeIgnoreFilter {
       const content = fs.readFileSync(filePath, "utf-8");
       return this.parseIgnoreContent(content);
     } catch (error) {
-      console.error(`Warning: Could not read ${filePath}:`, error);
+      ignoreFilterLogger.warn("Could not read ignore file", { filePath });
       return [];
     }
   }

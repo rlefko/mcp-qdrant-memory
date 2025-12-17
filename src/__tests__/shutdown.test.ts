@@ -78,7 +78,7 @@ describe("ShutdownManager", () => {
       manager.register(callback);
       expect(manager.getCleanupCallbackCount()).toBe(0);
       expect(consoleSpy).toHaveBeenCalledWith(
-        "[ShutdownManager] Cannot register callback during shutdown"
+        expect.stringContaining("Cannot register callback during shutdown")
       );
     });
   });
@@ -218,12 +218,8 @@ describe("ShutdownManager", () => {
 
       await manager.shutdown("TEST_SIGNAL");
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "[ShutdownManager] Starting shutdown (signal: TEST_SIGNAL)..."
-      );
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/\[ShutdownManager\] Shutdown completed in \d+ms/)
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Starting shutdown"));
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Shutdown completed"));
     });
 
     it("should include signal name in log if provided", async () => {
@@ -231,9 +227,7 @@ describe("ShutdownManager", () => {
 
       await manager.shutdown("SIGTERM");
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "[ShutdownManager] Starting shutdown (signal: SIGTERM)..."
-      );
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("SIGTERM"));
     });
   });
 
@@ -287,9 +281,9 @@ describe("ShutdownManager", () => {
       manager.installSignalHandlers();
       manager.installSignalHandlers();
 
-      // Should warn about duplicate installation
+      // Should warn about duplicate installation (structured logging format)
       expect(consoleSpy).toHaveBeenCalledWith(
-        "[ShutdownManager] Signal handlers already installed"
+        expect.stringContaining("Signal handlers already installed")
       );
 
       // Should only call process.on twice (SIGTERM and SIGINT) for first install

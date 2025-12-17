@@ -8,6 +8,7 @@ import {
   QDRANT_API_KEY,
   getCollectionName,
 } from "../config.js";
+import { qdrantLogger } from "../logger.js";
 import type {
   Entity,
   Relation,
@@ -159,11 +160,12 @@ export class QdrantPersistence {
     this.ignoreFilter = createFilterFromEnv();
     if (this.ignoreFilter) {
       const stats = this.ignoreFilter.getStats();
-      console.error(
-        `[ClaudeIgnore] Loaded ${stats.totalPatterns} patterns ` +
-          `(universal: ${stats.universalPatterns}, global: ${stats.globalPatterns}, ` +
-          `project: ${stats.projectPatterns})`
-      );
+      qdrantLogger.info("ClaudeIgnore patterns loaded", {
+        total: stats.totalPatterns,
+        universal: stats.universalPatterns,
+        global: stats.globalPatterns,
+        project: stats.projectPatterns,
+      });
     }
 
     // Start BM25 service LRU cleanup interval
@@ -230,9 +232,10 @@ export class QdrantPersistence {
     }
 
     if (removedCount > 0) {
-      console.error(
-        `[BM25] Cleaned up ${removedCount} stale service(s), ${this.bm25Services.size} remaining`
-      );
+      qdrantLogger.info("BM25 services cleaned up", {
+        removed: removedCount,
+        remaining: this.bm25Services.size,
+      });
     }
   }
 
@@ -289,8 +292,10 @@ export class QdrantPersistence {
         break;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Unknown Qdrant error";
-        console.error(`Connection attempt failed: ${message}`);
-        console.error("Full error:", error);
+        qdrantLogger.warn("Connection attempt failed", {
+          error: message,
+          retriesRemaining: retries - 1,
+        });
 
         retries--;
         if (retries === 0) {
@@ -822,9 +827,10 @@ export class QdrantPersistence {
 
         // Debug payload metadata
         if (payload.metadata?.content_bm25) {
-          console.error(
-            `[🔍 PAYLOAD DEBUG] Entity: ${entityName}, payload.metadata has content_bm25: ${payload.metadata.content_bm25}`
-          );
+          qdrantLogger.debug("Payload has BM25 content", {
+            entityName,
+            hasBm25Content: true,
+          });
         }
 
         validResults.push({
@@ -847,7 +853,7 @@ export class QdrantPersistence {
       const filteredResults = this.ignoreFilter.filterResults(validResults);
       const filtered = validResults.length - filteredResults.length;
       if (filtered > 0) {
-        console.error(`[ClaudeIgnore] Filtered ${filtered} results matching ignore patterns`);
+        qdrantLogger.debug("ClaudeIgnore filtered results", { filtered });
       }
       return filteredResults;
     }
@@ -883,12 +889,11 @@ export class QdrantPersistence {
 
     // Always rebuild BM25 index to ensure entity names are included in content
     const stats = bm25Service.getStats();
-    console.error(`🔥 FORCE REBUILDING BM25 INDEX for ${col} - was ${stats.documentCount} docs`);
-    console.error(`[DEBUG] initializeBM25Index called from qdrant.ts`);
+    qdrantLogger.info("Rebuilding BM25 index", {
+      collection: col,
+      previousDocCount: stats.documentCount,
+    });
     bm25Service.clearDocuments();
-
-    // Force clear any cached state
-    console.error(`🧹 BM25 cache cleared for ${col}, rebuilding with entity names...`);
 
     try {
       await this.connect();
@@ -899,7 +904,7 @@ export class QdrantPersistence {
       const limit = 100;
       let batchCount = 0;
 
-      console.error(`[DEBUG] Starting BM25 data collection loop with limit=${limit}`);
+      qdrantLogger.debug("Starting BM25 data collection", { limit });
 
       do {
         batchCount++;
@@ -934,37 +939,17 @@ export class QdrantPersistence {
           typeof scrollResult.next_page_offset === "bigint"
             ? scrollResult.next_page_offset
             : undefined;
-
-        // console.error(`[DEBUG] BM25 Batch ${batchCount}: next offset=${offset}, will continue=${offset !== null && offset !== undefined && metadataChunks.length < 50000}`);
       } while (offset !== null && offset !== undefined && metadataChunks.length < 50000); // Safety limit to prevent infinite loops
 
-      console.error(
-        `[DEBUG] BM25 loop finished: ${batchCount} batches, ${metadataChunks.length} total documents collected`
-      );
+      qdrantLogger.debug("BM25 data collection complete", {
+        batches: batchCount,
+        totalDocuments: metadataChunks.length,
+      });
 
       // Convert metadata chunks to BM25 documents with complete metadata
       const bm25Documents = metadataChunks.map((chunk: any) => {
         const entityName = chunk.entity_name || chunk.id;
         const finalContent = chunk.metadata?.content_bm25 || chunk.content || "";
-
-        // Debug final content selection
-        console.error(
-          `[🔍 FINAL CONTENT DEBUG] Entity: ${entityName}, has_content_bm25: ${!!chunk.metadata?.content_bm25}, finalContent: "${finalContent}"`
-        );
-
-        // Debug processing (using Python pre-formatted content)
-        if (entityName?.includes("CoreIndexer") || entityName === "CoreIndexer") {
-          console.error("[🔍 BM25 CONTENT DEBUG] Processing chunk:", {
-            entity_name: entityName,
-            python_formatted_content: chunk.content?.substring(0, 150) + "...",
-            final_content: finalContent,
-            metadata_structure: {
-              has_metadata: !!chunk.metadata,
-              has_observations: !!chunk.metadata?.observations,
-              observations_count: chunk.metadata?.observations?.length || 0,
-            },
-          });
-        }
 
         return {
           id: chunk.entity_name || chunk.id,
@@ -981,16 +966,14 @@ export class QdrantPersistence {
       });
 
       // Index documents in BM25 service
-      console.error(
-        `[DEBUG] About to call bm25Service.updateDocuments with ${bm25Documents.length} documents from qdrant.ts initializeBM25Index`
-      );
       bm25Service.updateDocuments(bm25Documents);
 
-      console.error(
-        `BM25 index initialized with ${bm25Documents.length} metadata chunks for ${col}`
-      );
+      qdrantLogger.info("BM25 index initialized", {
+        collection: col,
+        documents: bm25Documents.length,
+      });
     } catch (error) {
-      console.error("Failed to initialize BM25 index:", error);
+      qdrantLogger.error("Failed to initialize BM25 index", error instanceof Error ? error : null);
     }
   }
 
@@ -1061,7 +1044,11 @@ export class QdrantPersistence {
 
       return validResults;
     } catch (error) {
-      console.error(`Failed to get implementation chunks for ${entityName}:`, error);
+      qdrantLogger.error(
+        "Failed to get implementation chunks",
+        error instanceof Error ? error : null,
+        { entityName }
+      );
       return [];
     }
   }
@@ -1178,7 +1165,7 @@ export class QdrantPersistence {
 
       return this.mergeAndDeduplicate([...baseResults, ...additionalResults]);
     } catch (error) {
-      console.error("Failed to expand logical scope:", error);
+      qdrantLogger.error("Failed to expand logical scope", error instanceof Error ? error : null);
       return baseResults;
     }
   }
@@ -1233,7 +1220,10 @@ export class QdrantPersistence {
 
       return this.mergeAndDeduplicate([...baseResults, ...additionalResults]);
     } catch (error) {
-      console.error("Failed to expand dependency scope:", error);
+      qdrantLogger.error(
+        "Failed to expand dependency scope",
+        error instanceof Error ? error : null
+      );
       return baseResults;
     }
   }
@@ -1341,31 +1331,24 @@ export class QdrantPersistence {
     // First, get raw data from Qdrant with limit enforcement and entityTypes filtering
     const rawData = await this._getRawData(limitPerType, entityTypeFilter, col);
 
-    console.error(
-      `DEBUG DEEP: rawData.entities first 3:`,
-      rawData.entities.slice(0, 3).map((e) => ({ name: e.name, entityType: e.entityType }))
-    );
-    console.error(
-      `DEBUG DEEP: rawData.relations first 3:`,
-      rawData.relations
-        .slice(0, 3)
-        .map((r) => ({ from: r.from, to: r.to, relationType: r.relationType }))
-    );
+    qdrantLogger.debug("Raw data retrieved", {
+      entities: rawData.entities.length,
+      relations: rawData.relations.length,
+    });
 
     // Qdrant already filtered by entityTypes, no additional filtering needed
     const filteredEntities = rawData.entities;
     let filteredRelations = rawData.relations;
 
     // For entities mode with entityTypes filtering, filter relations to only show relevant ones
-    console.error(
-      `DEBUG: mode="${mode}", entityTypeFilter=${JSON.stringify(entityTypeFilter)}, entities.length=${filteredEntities.length}, relations.length=${filteredRelations.length}`
-    );
-
     if (entityTypeFilter && entityTypeFilter.length > 0) {
-      console.error(`DEBUG: Filtering relations for entityTypes filter (mode: ${mode})`);
-      console.error(`DEBUG: Relations before filtering:`, filteredRelations.length);
+      const beforeCount = filteredRelations.length;
       filteredRelations = this.filterRelationsForEntities(filteredRelations, filteredEntities);
-      console.error(`DEBUG: Relations after filtering:`, filteredRelations.length);
+      qdrantLogger.debug("Relations filtered for entity types", {
+        mode,
+        before: beforeCount,
+        after: filteredRelations.length,
+      });
     }
 
     // Apply mode-specific filtering before returning
@@ -1377,10 +1360,6 @@ export class QdrantPersistence {
           relationEntityNames.add(rel.from);
           relationEntityNames.add(rel.to);
         });
-        console.error(
-          `DEBUG: relationships mode - searching for entities matching relation endpoints:`,
-          Array.from(relationEntityNames).slice(0, 5)
-        );
 
         // Search for entities whose names match the relation endpoints
         const matchedEntities = await this.fetchEntitiesByNames(
@@ -1388,18 +1367,18 @@ export class QdrantPersistence {
           limitPerType,
           col
         );
-        console.error(
-          `DEBUG: relationships mode - found ${matchedEntities.length} matching entities from ${relationEntityNames.size} relation endpoints`
-        );
 
         // Filter relations to only include those connecting the matched entities
         const matchedEntityNames = new Set(matchedEntities.map((e) => e.name));
         const matchedRelations = filteredRelations.filter(
           (rel) => matchedEntityNames.has(rel.from) && matchedEntityNames.has(rel.to)
         );
-        console.error(
-          `DEBUG: relationships mode - filtered from ${filteredRelations.length} to ${matchedRelations.length} relations connecting matched entities`
-        );
+
+        qdrantLogger.debug("Relationships mode processing", {
+          relationEndpoints: relationEntityNames.size,
+          matchedEntities: matchedEntities.length,
+          filteredRelations: matchedRelations.length,
+        });
 
         return { entities: matchedEntities, relations: matchedRelations };
 
@@ -1419,9 +1398,7 @@ export class QdrantPersistence {
   ): Promise<{ entities: Entity[]; relations: Relation[] }> {
     const collection = col || this.resolveCollection();
     // Convert v2.4 chunks back to legacy format for read_graph compatibility
-    console.error(
-      `DEBUG _getRawData: Starting with limit=${limit}, entityTypes=${JSON.stringify(entityTypes)}`
-    );
+    qdrantLogger.debug("_getRawData starting", { limit, entityTypes });
     const entities: Entity[] = [];
     const relations: Relation[] = [];
     const allEntities: Entity[] = []; // Track all entities for relation type filtering
@@ -1451,7 +1428,6 @@ export class QdrantPersistence {
         const payload = point.payload as unknown as ChunkPayload;
 
         if (payload.type === "chunk") {
-          console.error("Processing chunk:", payload.chunk_type, payload.entity_name);
           if (payload.chunk_type === "metadata") {
             // Only add entity if we haven't reached the limit AND passes entityTypes filter
             if (entityCount < maxEntities) {
@@ -1494,7 +1470,7 @@ export class QdrantPersistence {
             const to = (payload as any).relation_target || (payload as any).to;
             const relationType = payload.relation_type || (payload as any).relationType;
 
-            console.error("Processing relation:", { from, to, relationType, payload });
+            qdrantLogger.debug("Processing relation", { from, to, relationType });
 
             if (from && to && relationType) {
               relations.push({
@@ -1502,9 +1478,9 @@ export class QdrantPersistence {
                 to: to,
                 relationType: relationType,
               });
-              console.error("Added relation:", { from, to, relationType });
+              qdrantLogger.debug("Added relation", { from, to, relationType });
             } else {
-              console.error("Skipped relation - missing fields:", { from, to, relationType });
+              qdrantLogger.debug("Skipped relation - missing fields", { from, to, relationType });
             }
           }
         }
@@ -1530,19 +1506,16 @@ export class QdrantPersistence {
       entityTypes
     );
 
-    console.error(
-      `DEBUG _getRawData: Returning ${entities.length} entities, ${filteredRelations.length} relations`
-    );
-    console.error(
-      `DEBUG _getRawData: Sample entities:`,
-      entities.slice(0, 2).map((e) => ({ name: e.name, entityType: e.entityType }))
-    );
-    console.error(
-      `DEBUG _getRawData: Sample relations:`,
-      filteredRelations
-        .slice(0, 2)
-        .map((r) => ({ from: r.from, to: r.to, relationType: r.relationType }))
-    );
+    qdrantLogger.debug("_getRawData complete", {
+      entityCount: entities.length,
+      relationCount: filteredRelations.length,
+      sampleEntities: entities.slice(0, 2).map((e) => ({ name: e.name, entityType: e.entityType })),
+      sampleRelations: filteredRelations.slice(0, 2).map((r) => ({
+        from: r.from,
+        to: r.to,
+        relationType: r.relationType,
+      })),
+    });
 
     return { entities, relations: filteredRelations };
   }
@@ -2077,11 +2050,11 @@ export class QdrantPersistence {
     let collected = 0;
     let batchCount = 0;
 
-    console.error(`[DEBUG] Starting getMetadataChunks with limit=${limit}`);
+    qdrantLogger.debug("Starting getMetadataChunks", { limit });
 
     do {
       batchCount++;
-      console.error(`[DEBUG] Batch ${batchCount}: offset=${offset}, collected=${collected}`);
+      qdrantLogger.debug("Processing batch", { batchCount, offset, collected });
 
       const scrollResult = await this.client.scroll(col, {
         limit: Math.min(batchSize, limit - collected),
@@ -2093,12 +2066,12 @@ export class QdrantPersistence {
         },
       });
 
-      console.error(
-        `[DEBUG] Batch ${batchCount}: got ${scrollResult.points.length} points, next_offset=${scrollResult.next_page_offset}`
-      );
-      console.error(
-        `[DEBUG] Batch ${batchCount}: next_offset type=${typeof scrollResult.next_page_offset}, value=${scrollResult.next_page_offset}`
-      );
+      qdrantLogger.debug("Batch scroll result", {
+        batchCount,
+        pointsReturned: scrollResult.points.length,
+        nextOffset: scrollResult.next_page_offset,
+        nextOffsetType: typeof scrollResult.next_page_offset,
+      });
 
       for (const point of scrollResult.points) {
         if (point.payload && collected < limit) {
@@ -2113,19 +2086,21 @@ export class QdrantPersistence {
           ? (scrollResult.next_page_offset as string | number)
           : undefined;
 
-      console.error(`[DEBUG] Batch ${batchCount}: collected=${collected}, next_offset=${offset}`);
+      qdrantLogger.debug("Batch progress", { batchCount, collected, nextOffset: offset });
 
       // Safety check to prevent infinite loop
       if (batchCount > 50) {
-        console.error(`[DEBUG] SAFETY BREAK: Stopping after 50 batches`);
+        qdrantLogger.warn("Safety break triggered - stopping after 50 batches");
         break;
       }
     } while (offset !== null && offset !== undefined && collected < limit);
 
-    console.error(`BM25 index initialized with ${chunks.length} metadata chunks`);
-    console.error(
-      `[DEBUG] Final stats: ${batchCount} batches, ${collected} collected, last_offset=${offset}`
-    );
+    qdrantLogger.info("BM25 index initialized", { metadataChunks: chunks.length });
+    qdrantLogger.debug("getMetadataChunks complete", {
+      batchCount,
+      collected,
+      lastOffset: offset,
+    });
     return chunks;
   }
 
@@ -2409,7 +2384,7 @@ export class QdrantPersistence {
         const linearResults = await this.searchLinearTickets(query, status, labels, limit);
         results.push(...linearResults);
       } catch (error) {
-        console.error("Linear search error:", error);
+        qdrantLogger.error("Linear search error", error instanceof Error ? error : null);
       }
     }
 
@@ -2419,7 +2394,7 @@ export class QdrantPersistence {
         const githubResults = await this.searchGitHubTickets(query, status, labels, limit);
         results.push(...githubResults);
       } catch (error) {
-        console.error("GitHub search error:", error);
+        qdrantLogger.error("GitHub search error", error instanceof Error ? error : null);
       }
     }
 
@@ -2517,7 +2492,7 @@ export class QdrantPersistence {
           })
         );
     } catch (error) {
-      console.error("Linear search error:", error);
+      qdrantLogger.error("Linear search error", error instanceof Error ? error : null);
       return [];
     }
   }
@@ -2588,7 +2563,7 @@ export class QdrantPersistence {
         };
       });
     } catch (error) {
-      console.error("GitHub search error:", error);
+      qdrantLogger.error("GitHub search error", error instanceof Error ? error : null);
       return [];
     }
   }
@@ -2704,7 +2679,7 @@ export class QdrantPersistence {
         team: issue.team?.name,
       };
     } catch (error) {
-      console.error("Linear getTicket error:", error);
+      qdrantLogger.error("Linear getTicket error", error instanceof Error ? error : null);
       return null;
     }
   }
@@ -2793,7 +2768,7 @@ export class QdrantPersistence {
         milestone: issue.milestone?.title,
       };
     } catch (error) {
-      console.error("GitHub getTicket error:", error);
+      qdrantLogger.error("GitHub getTicket error", error instanceof Error ? error : null);
       return null;
     }
   }

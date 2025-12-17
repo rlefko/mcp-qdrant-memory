@@ -53,6 +53,7 @@ import {
 } from "./validation.js";
 import { PlanModeGuard } from "./plan-mode-guard.js";
 import { getShutdownManager } from "./shutdown.js";
+import { logger, qdrantLogger } from "./logger.js";
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
 
@@ -201,7 +202,7 @@ class KnowledgeGraphManager {
     try {
       return await this.qdrant.scrollAll(options, collection);
     } catch (error) {
-      console.error("Failed to read from Qdrant:", error);
+      qdrantLogger.error("Failed to read from Qdrant", error instanceof Error ? error : null);
       // Return empty graph on error
       return { entities: [], relations: [] };
     }
@@ -222,7 +223,10 @@ class KnowledgeGraphManager {
       // If it's not a KnowledgeGraph (e.g., SmartGraph), return empty
       return { entities: [], relations: [] };
     } catch (error) {
-      console.error("Failed to read raw graph from Qdrant:", error);
+      qdrantLogger.error(
+        "Failed to read raw graph from Qdrant",
+        error instanceof Error ? error : null
+      );
       return { entities: [], relations: [] };
     }
   }
@@ -1053,7 +1057,7 @@ class MemoryServer {
     let currentLimit = initialLimit;
     let attempts = 0;
 
-    console.error(`[DEBUG] autoReduceResponse starting with initialLimit: ${initialLimit}`);
+    logger.debug("autoReduceResponse starting", { initialLimit });
 
     while (attempts < maxAttempts) {
       try {
@@ -1061,24 +1065,28 @@ class MemoryServer {
         const responseText = JSON.stringify(response);
         const tokenCount = Math.ceil(responseText.length / 4);
 
-        console.error(
-          `[DEBUG] Attempt ${attempts + 1}: limit=${currentLimit}, response size=${responseText.length} chars, tokens=${tokenCount}`
-        );
+        logger.debug("Auto-reduce attempt", {
+          attempt: attempts + 1,
+          limit: currentLimit,
+          responseSize: responseText.length,
+          tokens: tokenCount,
+        });
 
         // If response fits within token limit, return it
         if (tokenCount <= tokenLimit) {
-          console.error(`[DEBUG] Response fits within token limit, returning`);
+          logger.debug("Response fits within token limit, returning");
           return response;
         }
 
         // If this was our last attempt, let MCP handle the overflow
         if (attempts === maxAttempts - 1) {
-          console.error(
-            `[ERROR] Auto-reduce failed after ${attempts + 1} attempts. Final response: ${tokenCount} tokens. Letting MCP handle overflow.`
-          );
-          console.error(`[ERROR] This will cause MCP tool response to exceed 25000 token limit!`);
+          logger.error("Auto-reduce failed, token limit exceeded", null, {
+            attempts: attempts + 1,
+            tokenCount,
+            tokenLimit,
+          });
           // Return what we can with final reduced limit
-          console.error(`[DEBUG] Using buildGenericStreamingResponse to fit within token limit`);
+          logger.debug("Using buildGenericStreamingResponse to fit within token limit");
           const finalResponse = await buildFunction(1); // Get minimal results
           return await streamingResponseBuilder.buildGenericStreamingResponse(
             finalResponse.content || [],
@@ -1088,10 +1096,12 @@ class MemoryServer {
 
         // Reduce limit and try again
         currentLimit = Math.max(1, Math.floor(currentLimit * reductionFactor));
-        console.error(`[DEBUG] Reducing limit for next attempt: ${currentLimit}`);
+        logger.debug("Reducing limit for next attempt", { newLimit: currentLimit });
         attempts++;
       } catch (error) {
-        console.error(`Auto-reduce attempt ${attempts + 1} failed:`, error);
+        logger.error("Auto-reduce attempt failed", error instanceof Error ? error : null, {
+          attempt: attempts + 1,
+        });
         // Return minimal valid response on error
         return {
           content: [],
@@ -1126,9 +1136,9 @@ class MemoryServer {
       await this.graphManager.initialize();
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
-      console.error("Memory MCP server running on stdio");
+      logger.info("Memory MCP server running on stdio");
     } catch (error) {
-      console.error("Fatal error running server:", error);
+      logger.error("Fatal error running server", error instanceof Error ? error : null);
       process.exit(1);
     }
   }
@@ -1153,7 +1163,7 @@ const server = new MemoryServer();
 
 // Register cleanup callback for server shutdown
 shutdownManager.register(async () => {
-  console.error("[Server] Cleaning up resources...");
+  logger.info("Cleaning up server resources");
   // Stop BM25 cleanup interval and other resource cleanup
   server.cleanup();
 });
@@ -1162,6 +1172,6 @@ shutdownManager.register(async () => {
 shutdownManager.installSignalHandlers();
 
 server.run().catch((error) => {
-  console.error("Fatal error running server:", error);
+  logger.error("Fatal error running server", error instanceof Error ? error : null);
   process.exit(1);
 });
