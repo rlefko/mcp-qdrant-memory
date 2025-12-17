@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Graceful shutdown handling (SIGTERM/SIGINT) with `ShutdownManager` class
+- HTTP client with timeout support (`fetchWithTimeout`) for external API calls
+- BM25 service LRU cleanup with configurable TTL and max service count
+- New environment variables for timeout configuration
 - ESLint configuration with TypeScript support
 - Prettier configuration for consistent formatting
 - Husky + lint-staged for pre-commit hooks
@@ -18,7 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- External API calls now have configurable timeouts:
+  - Voyage AI: 30s (default)
+  - Linear API: 10s (default)
+  - GitHub API: 10s (default)
+- BM25 services are now cleaned up after 30 minutes of inactivity
 - Updated package.json with lint and format scripts
+
+### Fixed
+
+- Requests no longer hang indefinitely on slow external APIs
+- Memory leaks from accumulating BM25 services prevented
 
 ## [0.2.5] - 2024-12-15
 

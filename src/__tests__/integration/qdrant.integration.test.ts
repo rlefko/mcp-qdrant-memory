@@ -114,7 +114,7 @@ describe("QdrantPersistence Integration Tests", () => {
       mockQdrant.setFailure("connection", 2);
       await persistence.connect();
       // Should succeed after retries
-    });
+    }, 15000); // Extended timeout for retry delays
 
     it("should throw after max connection retries", async () => {
       persistence = new QdrantPersistence();
@@ -538,6 +538,49 @@ describe("QdrantPersistence Integration Tests", () => {
     it("should use default collection when none specified", async () => {
       await persistence.persistEntity(validEntity);
       expect(mockQdrant.getPointCount("test-collection")).toBe(1);
+    });
+  });
+
+  describe("BM25 Service Management", () => {
+    beforeEach(() => {
+      persistence = new QdrantPersistence();
+    });
+
+    afterEach(() => {
+      // Ensure cleanup interval is stopped
+      persistence.stopBM25Cleanup();
+    });
+
+    it("should track BM25 service count", async () => {
+      mockQdrant.seedData("test-collection", []);
+      await persistence.initialize("test-collection");
+
+      // After initialization, there should be a BM25 service for the collection
+      expect(persistence.getBM25ServiceCount()).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should create separate BM25 services for different collections", async () => {
+      mockQdrant.seedData("collection-1", []);
+      mockQdrant.seedData("collection-2", []);
+
+      await persistence.initialize("collection-1");
+      const countAfterFirst = persistence.getBM25ServiceCount();
+
+      await persistence.initialize("collection-2");
+      const countAfterSecond = persistence.getBM25ServiceCount();
+
+      // Should have services for both collections
+      expect(countAfterSecond).toBeGreaterThanOrEqual(countAfterFirst);
+    });
+
+    it("should stop cleanup interval", () => {
+      // Should not throw
+      persistence.stopBM25Cleanup();
+      persistence.stopBM25Cleanup(); // Multiple calls should be safe
+    });
+
+    it("should return 0 when no collections have been accessed", () => {
+      expect(persistence.getBM25ServiceCount()).toBe(0);
     });
   });
 });

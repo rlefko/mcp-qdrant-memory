@@ -206,21 +206,20 @@ describe("fetch-override.ts", () => {
 
   describe("Security verification", () => {
     it("should never leak Qdrant API key to Voyage AI", () => {
-      const voyageUrl = "https://api.voyageai.com/v1/embeddings";
-      const qdrantUrl = "http://localhost:6333";
-      const qdrantApiKey = "super-secret-qdrant-key";
+      const voyageUrl: string = "https://api.voyageai.com/v1/embeddings";
+      const qdrantUrl: string = "http://localhost:6333";
 
       // Simulate what the fixed fetch-override does
-      const shouldAddKey = qdrantUrl !== "" && voyageUrl.startsWith(qdrantUrl);
+      const shouldAddKey = qdrantUrl.length > 0 && voyageUrl.startsWith(qdrantUrl);
 
       expect(shouldAddKey).toBe(false);
     });
 
     it("should never leak Qdrant API key to arbitrary URLs", () => {
-      const maliciousUrl = "https://attacker.com/steal-keys";
-      const qdrantUrl = "http://localhost:6333";
+      const maliciousUrl: string = "https://attacker.com/steal-keys";
+      const qdrantUrl: string = "http://localhost:6333";
 
-      const shouldAddKey = qdrantUrl !== "" && maliciousUrl.startsWith(qdrantUrl);
+      const shouldAddKey = qdrantUrl.length > 0 && maliciousUrl.startsWith(qdrantUrl);
 
       expect(shouldAddKey).toBe(false);
     });

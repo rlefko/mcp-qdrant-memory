@@ -52,6 +52,7 @@ import {
   validateSetPlanModeRequest,
 } from "./validation.js";
 import { PlanModeGuard } from "./plan-mode-guard.js";
+import { getShutdownManager } from "./shutdown.js";
 
 // Removed: Path definitions no longer needed since we're not writing JSON files
 
@@ -73,6 +74,13 @@ class KnowledgeGraphManager {
 
     // Initialize BM25 index with existing documents using qdrant.ts implementation
     await this.qdrant.initializeBM25Index(collection);
+  }
+
+  /**
+   * Cleanup resources during shutdown.
+   */
+  cleanup(): void {
+    this.qdrant.stopBM25Cleanup();
   }
 
   // async save(): Promise<void> {
@@ -1124,10 +1132,35 @@ class MemoryServer {
       process.exit(1);
     }
   }
+
+  /**
+   * Cleanup resources during shutdown.
+   */
+  cleanup(): void {
+    this.graphManager.cleanup();
+  }
 }
 
-// Server startup
+// Server startup with graceful shutdown
+const shutdownManager = getShutdownManager({
+  gracePeriodMs: 10000,
+  exitAfterShutdown: true,
+  exitCode: 0,
+});
+
+// Create server instance first
 const server = new MemoryServer();
+
+// Register cleanup callback for server shutdown
+shutdownManager.register(async () => {
+  console.error("[Server] Cleaning up resources...");
+  // Stop BM25 cleanup interval and other resource cleanup
+  server.cleanup();
+});
+
+// Install signal handlers for graceful shutdown
+shutdownManager.installSignalHandlers();
+
 server.run().catch((error) => {
   console.error("Fatal error running server:", error);
   process.exit(1);

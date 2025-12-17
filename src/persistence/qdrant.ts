@@ -29,6 +29,7 @@ import { TicketSource } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
 import type { ClaudeIgnoreFilter } from "../claudeignore/index.js";
 import { createFilterFromEnv } from "../claudeignore/index.js";
+import { fetchWithTimeout, DEFAULT_TIMEOUTS } from "../http-client.js";
 
 // Create custom Qdrant client that adds auth header
 class CustomQdrantClient extends QdrantClient {
@@ -100,15 +101,31 @@ function isRelationChunk(payload: ChunkPayload): boolean {
   );
 }
 
+/**
+ * BM25 service entry with LRU tracking
+ */
+interface BM25ServiceEntry {
+  service: BM25Service;
+  lastAccessed: number;
+}
+
+/**
+ * BM25 service LRU configuration
+ */
+const BM25_MAX_SERVICES = 10;
+const BM25_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const BM25_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 export class QdrantPersistence {
   private client: CustomQdrantClient;
   private openai: OpenAI;
   private initialized: boolean = false;
   private vectorSize: number = 1536; // Default to OpenAI, updated after initialization
-  // Per-collection BM25 services for multi-project support
-  private bm25Services: Map<string, BM25Service> = new Map();
+  // Per-collection BM25 services for multi-project support with LRU tracking
+  private bm25Services: Map<string, BM25ServiceEntry> = new Map();
   private bm25Initialized: Map<string, boolean> = new Map();
   private bm25InitializationPromises: Map<string, Promise<void>> = new Map();
+  private bm25CleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   // ClaudeIgnore filter for file path filtering
   private ignoreFilter: ClaudeIgnoreFilter | null = null;
@@ -148,6 +165,82 @@ export class QdrantPersistence {
           `project: ${stats.projectPatterns})`
       );
     }
+
+    // Start BM25 service LRU cleanup interval
+    this.startBM25Cleanup();
+  }
+
+  /**
+   * Start the periodic BM25 service cleanup.
+   */
+  private startBM25Cleanup(): void {
+    if (this.bm25CleanupInterval) return;
+
+    this.bm25CleanupInterval = setInterval(() => {
+      this.cleanupStaleBM25Services();
+    }, BM25_CLEANUP_INTERVAL_MS);
+
+    // Don't prevent process exit
+    if (this.bm25CleanupInterval.unref) {
+      this.bm25CleanupInterval.unref();
+    }
+  }
+
+  /**
+   * Stop the BM25 cleanup interval (for shutdown).
+   */
+  public stopBM25Cleanup(): void {
+    if (this.bm25CleanupInterval) {
+      clearInterval(this.bm25CleanupInterval);
+      this.bm25CleanupInterval = null;
+    }
+  }
+
+  /**
+   * Clean up stale BM25 services and enforce max count.
+   */
+  private cleanupStaleBM25Services(): void {
+    const now = Date.now();
+    const staleThreshold = now - BM25_TTL_MS;
+    let removedCount = 0;
+
+    // Remove stale entries (not accessed within TTL)
+    for (const [collection, entry] of this.bm25Services) {
+      if (entry.lastAccessed < staleThreshold) {
+        this.bm25Services.delete(collection);
+        this.bm25Initialized.delete(collection);
+        removedCount++;
+      }
+    }
+
+    // Enforce max count using LRU eviction
+    if (this.bm25Services.size > BM25_MAX_SERVICES) {
+      // Sort by lastAccessed (oldest first)
+      const sorted = [...this.bm25Services.entries()].sort(
+        (a, b) => a[1].lastAccessed - b[1].lastAccessed
+      );
+
+      // Remove oldest entries to get down to max
+      const toRemove = sorted.slice(0, this.bm25Services.size - BM25_MAX_SERVICES);
+      for (const [collection] of toRemove) {
+        this.bm25Services.delete(collection);
+        this.bm25Initialized.delete(collection);
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      console.error(
+        `[BM25] Cleaned up ${removedCount} stale service(s), ${this.bm25Services.size} remaining`
+      );
+    }
+  }
+
+  /**
+   * Get the number of active BM25 services (for monitoring).
+   */
+  public getBM25ServiceCount(): number {
+    return this.bm25Services.size;
   }
 
   /**
@@ -158,19 +251,28 @@ export class QdrantPersistence {
   }
 
   /**
-   * Get or create BM25 service for a specific collection.
+   * Get or create BM25 service for a specific collection with LRU tracking.
    */
   private getBM25Service(collection: string): BM25Service {
-    if (!this.bm25Services.has(collection)) {
-      this.bm25Services.set(
-        collection,
-        new BM25Service({
-          k1: 1.2,
-          b: 0.75,
-        })
-      );
+    const now = Date.now();
+    const entry = this.bm25Services.get(collection);
+
+    if (entry) {
+      // Update last accessed time for LRU tracking
+      entry.lastAccessed = now;
+      return entry.service;
     }
-    return this.bm25Services.get(collection)!;
+
+    // Create new service entry
+    const newEntry: BM25ServiceEntry = {
+      service: new BM25Service({
+        k1: 1.2,
+        b: 0.75,
+      }),
+      lastAccessed: now,
+    };
+    this.bm25Services.set(collection, newEntry);
+    return newEntry.service;
   }
 
   async connect() {
@@ -379,7 +481,7 @@ export class QdrantPersistence {
 
       const model = process.env.EMBEDDING_MODEL || "voyage-3.5-lite"; // Read from settings.txt via add-mcp
 
-      const response = await fetch("https://api.voyageai.com/v1/embeddings", {
+      const response = await fetchWithTimeout("https://api.voyageai.com/v1/embeddings", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -391,6 +493,7 @@ export class QdrantPersistence {
           input_type: "document",
           output_dimension: 512, // Required: voyage-3.5-lite defaults to 1024, we need 512 for Qdrant
         }),
+        timeoutMs: DEFAULT_TIMEOUTS.VOYAGE_AI,
       });
 
       if (!response.ok) {
@@ -2353,7 +2456,7 @@ export class QdrantPersistence {
     `;
 
     try {
-      const response = await fetch("https://api.linear.app/graphql", {
+      const response = await fetchWithTimeout("https://api.linear.app/graphql", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2363,6 +2466,7 @@ export class QdrantPersistence {
           query: graphqlQuery,
           variables: { limit: Math.min(limit * 2, 50) },
         }),
+        timeoutMs: DEFAULT_TIMEOUTS.LINEAR_API,
       });
 
       if (!response.ok) {
@@ -2441,7 +2545,7 @@ export class QdrantPersistence {
 
     try {
       const searchQuery = encodeURIComponent(searchParts.join(" "));
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `https://api.github.com/search/issues?q=${searchQuery}&per_page=${limit}`,
         {
           headers: {
@@ -2449,6 +2553,7 @@ export class QdrantPersistence {
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
           },
+          timeoutMs: DEFAULT_TIMEOUTS.GITHUB_API,
         }
       );
 
@@ -2545,7 +2650,7 @@ export class QdrantPersistence {
     `;
 
     try {
-      const response = await fetch("https://api.linear.app/graphql", {
+      const response = await fetchWithTimeout("https://api.linear.app/graphql", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2555,6 +2660,7 @@ export class QdrantPersistence {
           query: graphqlQuery,
           variables: { id: ticketId },
         }),
+        timeoutMs: DEFAULT_TIMEOUTS.LINEAR_API,
       });
 
       if (!response.ok) return null;
@@ -2618,7 +2724,7 @@ export class QdrantPersistence {
 
     try {
       // Get issue details
-      const issueResponse = await fetch(
+      const issueResponse = await fetchWithTimeout(
         `https://api.github.com/repos/${owner}/${repo}/issues/${number}`,
         {
           headers: {
@@ -2626,6 +2732,7 @@ export class QdrantPersistence {
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
           },
+          timeoutMs: DEFAULT_TIMEOUTS.GITHUB_API,
         }
       );
 
@@ -2636,7 +2743,7 @@ export class QdrantPersistence {
       // Get comments if requested
       let comments: TicketComment[] = [];
       if (includeComments) {
-        const commentsResponse = await fetch(
+        const commentsResponse = await fetchWithTimeout(
           `https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`,
           {
             headers: {
@@ -2644,6 +2751,7 @@ export class QdrantPersistence {
               Accept: "application/vnd.github+json",
               "X-GitHub-Api-Version": "2022-11-28",
             },
+            timeoutMs: DEFAULT_TIMEOUTS.GITHUB_API,
           }
         );
 
