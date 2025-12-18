@@ -120,7 +120,7 @@ export function createLogger(defaultModule?: string): Logger {
         error = errorOrContext;
         context = maybeContext;
       } else if (errorOrContext !== null && errorOrContext !== undefined) {
-        context = errorOrContext as LogContext;
+        context = errorOrContext;
       }
 
       const { module: contextModule, ...restContext } = context || {};
@@ -153,10 +153,10 @@ export function createLogger(defaultModule?: string): Logger {
       const childModule = childContext.module || defaultModule;
       const childLogger = createLogger(childModule);
       // Merge parent context with child context for all future calls
-      const originalDebug = childLogger.debug;
-      const originalInfo = childLogger.info;
-      const originalWarn = childLogger.warn;
-      const originalError = childLogger.error;
+      const originalDebug = childLogger.debug.bind(childLogger);
+      const originalInfo = childLogger.info.bind(childLogger);
+      const originalWarn = childLogger.warn.bind(childLogger);
+      const originalError = childLogger.error.bind(childLogger);
 
       childLogger.debug = (message: string, context?: LogContext) =>
         originalDebug(message, { ...childContext, ...context });
