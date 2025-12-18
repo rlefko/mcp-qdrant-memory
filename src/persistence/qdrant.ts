@@ -121,6 +121,7 @@ export class QdrantPersistence {
   private client: CustomQdrantClient;
   private openai: OpenAI;
   private initialized: boolean = false;
+  private connectingPromise: Promise<void> | null = null; // Mutex for concurrent connect() calls
   private vectorSize: number = 1536; // Default to OpenAI, updated after initialization
   // Per-collection BM25 services for multi-project support with LRU tracking
   private bm25Services: Map<string, BM25ServiceEntry> = new Map();
@@ -279,31 +280,46 @@ export class QdrantPersistence {
   }
 
   async connect() {
+    // Fast path: already initialized
     if (this.initialized) return;
 
-    // Add retry logic for initial connection with exponential backoff
-    let retries = 3;
-    let delay = 2000; // Start with 2 second delay
+    // Mutex: if already connecting, wait for existing connection attempt
+    if (this.connectingPromise) {
+      return this.connectingPromise;
+    }
 
-    while (retries > 0) {
-      try {
-        await this.client.getCollections();
-        this.initialized = true;
-        break;
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown Qdrant error";
-        qdrantLogger.warn("Connection attempt failed", {
-          error: message,
-          retriesRemaining: retries - 1,
-        });
+    // Create connection promise with retry logic
+    this.connectingPromise = (async () => {
+      let retries = 3;
+      let delay = 2000; // Start with 2 second delay
 
-        retries--;
-        if (retries === 0) {
-          throw new Error(`Failed to connect to Qdrant after multiple attempts: ${message}`);
+      while (retries > 0) {
+        try {
+          await this.client.getCollections();
+          this.initialized = true;
+          break;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Unknown Qdrant error";
+          qdrantLogger.warn("Connection attempt failed", {
+            error: message,
+            retriesRemaining: retries - 1,
+          });
+
+          retries--;
+          if (retries === 0) {
+            throw new Error(`Failed to connect to Qdrant after multiple attempts: ${message}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
         }
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
       }
+    })();
+
+    try {
+      await this.connectingPromise;
+    } finally {
+      // Clear the promise so future calls can retry if needed
+      this.connectingPromise = null;
     }
   }
 
@@ -554,7 +570,7 @@ export class QdrantPersistence {
       };
 
       await this.client.upsert(col, {
-        wait: false,
+        wait: true, // Wait for write confirmation to prevent silent data loss
         points: [
           {
             id,
@@ -596,7 +612,7 @@ export class QdrantPersistence {
     };
 
     await this.client.upsert(col, {
-      wait: false,
+      wait: true, // Wait for write confirmation to prevent silent data loss
       points: [
         {
           id,
