@@ -44,10 +44,28 @@ export class StreamingResponseBuilder {
     const limit = options.limit || 50;
     const tokenLimit = TOKEN_CONFIG.DEFAULT_TOKEN_LIMIT;
 
+    // Test filtering: OFF by default in smart mode (user decision)
+    // Set includeTests explicitly to true to include test code
+    const includeTests = options.includeTests ?? false;
+
+    // Filter out test code unless explicitly included
+    let filteredEntities = entities;
+    let filteredRelations = relations;
+    if (!includeTests) {
+      filteredEntities = entities.filter((e) => !this.isTestCode(e));
+      // Also filter relations involving test entities
+      const testEntityNames = new Set(
+        entities.filter((e) => this.isTestCode(e)).map((e) => e.name)
+      );
+      filteredRelations = relations.filter(
+        (r) => !testEntityNames.has(r.from) && !testEntityNames.has(r.to)
+      );
+    }
+
     const budget = tokenCounter.createBudget(tokenLimit);
     const context = {
-      entities,
-      relations,
+      entities: filteredEntities,
+      relations: filteredRelations,
       limit,
       budget,
       sectionsIncluded: [] as string[],
@@ -424,28 +442,48 @@ export class StreamingResponseBuilder {
   }
 
   private buildApiSurfaceSection(entities: Entity[], relations: Relation[], limit: number) {
+    // Find methods for classes from relations
+    const methodsByClass = new Map<string, string[]>();
+    const inheritsByClass = new Map<string, string[]>();
+
+    relations.forEach((r) => {
+      if (r.relationType === "has_method" || r.relationType === "contains") {
+        const methods = methodsByClass.get(r.from) || [];
+        methods.push(r.to);
+        methodsByClass.set(r.from, methods);
+      }
+      if (r.relationType === "inherits") {
+        const inherits = inheritsByClass.get(r.from) || [];
+        inherits.push(r.to);
+        inheritsByClass.set(r.from, inherits);
+      }
+    });
+
     const classes = entities
       .filter((e) => e.entityType === "class" && !e.name.startsWith("_"))
       .slice(0, limit)
       .map((cls) => {
-        const fileObs = (cls.observations || []).find((o) => o.includes("Defined in:"));
-        const lineObs = (cls.observations || []).find((o) => o.includes("Line:"));
+        // Read from metadata (stored by Python indexer)
+        const filePath = cls.metadata?.file_path || "";
+        const lineNumber = cls.metadata?.line_number || 0;
+
+        // Extract docstring from observations (fallback)
         const docObs = (cls.observations || []).find(
           (o) => o.includes("docstring") || o.includes("Description")
         );
 
         return {
           name: cls.name,
-          file: fileObs ? fileObs.replace("Defined in:", "").trim() : "",
-          line: lineObs ? parseInt(lineObs.replace("Line:", "").trim()) : 0,
+          file: filePath,
+          line: lineNumber,
           docstring: docObs
             ? docObs
                 .replace(/.*docstring[:\s]*/, "")
                 .trim()
                 .substring(0, 200)
-            : undefined, // Truncate docstrings
-          methods: [], // Simplified for now
-          inherits: [],
+            : undefined,
+          methods: (methodsByClass.get(cls.name) || []).slice(0, 10),
+          inherits: inheritsByClass.get(cls.name) || [],
         };
       });
 
@@ -455,8 +493,11 @@ export class StreamingResponseBuilder {
       )
       .slice(0, limit)
       .map((fn) => {
-        const fileObs = (fn.observations || []).find((o) => o.includes("Defined in:"));
-        const lineObs = (fn.observations || []).find((o) => o.includes("Line:"));
+        // Read from metadata (stored by Python indexer)
+        const filePath = fn.metadata?.file_path || "";
+        const lineNumber = fn.metadata?.line_number || 0;
+
+        // Extract signature and docstring from observations (fallback)
         const sigObs = (fn.observations || []).find(
           (o) => o.includes("Signature:") || o.includes("(")
         );
@@ -466,15 +507,15 @@ export class StreamingResponseBuilder {
 
         return {
           name: fn.name,
-          file: fileObs ? fileObs.replace("Defined in:", "").trim() : "",
-          line: lineObs ? parseInt(lineObs.replace("Line:", "").trim()) : 0,
-          signature: sigObs ? sigObs.trim().substring(0, 100) : undefined, // Truncate signatures
+          file: filePath,
+          line: lineNumber,
+          signature: sigObs ? sigObs.trim().substring(0, 100) : undefined,
           docstring: docObs
             ? docObs
                 .replace(/.*docstring[:\s]*/, "")
                 .trim()
                 .substring(0, 200)
-            : undefined, // Truncate docstrings
+            : undefined,
         };
       });
 
@@ -518,13 +559,23 @@ export class StreamingResponseBuilder {
   private extractKeyModules(entities: Entity[]): string[] {
     const modules = new Set<string>();
     entities.forEach((entity) => {
-      const observations = entity.observations || [];
-      const fileObs = observations.find((o) => o.includes("Defined in:"));
-      if (fileObs) {
-        const filePath = fileObs.replace("Defined in:", "").trim();
+      // Read from metadata (stored by Python indexer)
+      const filePath = entity.metadata?.file_path;
+      if (filePath) {
         const parts = filePath.split("/");
-        if (parts.length > 1) {
-          modules.add(parts[0]);
+        // Find the first meaningful directory (skip empty parts from absolute paths)
+        const meaningfulParts = parts.filter((p) => p && p !== ".");
+        if (meaningfulParts.length > 1) {
+          // Try to find a src/lib/packages type directory
+          const srcIndex = meaningfulParts.findIndex((p) =>
+            ["src", "lib", "packages", "app", "components", "modules"].includes(p)
+          );
+          if (srcIndex >= 0 && meaningfulParts[srcIndex + 1]) {
+            modules.add(meaningfulParts[srcIndex + 1]);
+          } else {
+            // Fallback: use first meaningful directory
+            modules.add(meaningfulParts[0]);
+          }
         }
       }
     });
@@ -559,6 +610,65 @@ export class StreamingResponseBuilder {
         totalResults: data.length,
       },
     };
+  }
+
+  /**
+   * Check if an entity is test code based on metadata or name patterns
+   */
+  private isTestCode(entity: Entity): boolean {
+    // Check metadata flag (set by Python indexer)
+    if (entity.metadata?.is_test_code === true) {
+      return true;
+    }
+    if (entity.metadata?.code_category === "test" || entity.metadata?.code_category === "mock") {
+      return true;
+    }
+
+    // Check file path patterns
+    const filePath = entity.metadata?.file_path || "";
+    const testPathPatterns = [
+      "/tests/",
+      "/test/",
+      "/__tests__/",
+      "/__mocks__/",
+      "/fixtures/",
+      "/stubs/",
+      "_test.py",
+      ".test.ts",
+      ".test.tsx",
+      ".test.js",
+      ".spec.ts",
+      ".spec.js",
+      "test_",
+      "conftest.py",
+    ];
+    if (testPathPatterns.some((pattern) => filePath.includes(pattern))) {
+      return true;
+    }
+
+    // Check entity name patterns (test framework functions/classes)
+    const name = entity.name || "";
+    const testNamePatterns = [
+      /^test_/i,
+      /^Test[A-Z]/,
+      /Test$/,
+      /^Mock[A-Z]/,
+      /Mock$/,
+      /^Stub[A-Z]/,
+      /^Fake[A-Z]/,
+      /^Spy[A-Z]/,
+      /^EXPECT_/,
+      /^ASSERT_/,
+      /^describe$/,
+      /^it$/,
+      /^beforeEach$/,
+      /^afterEach$/,
+    ];
+    if (testNamePatterns.some((pattern) => pattern.test(name))) {
+      return true;
+    }
+
+    return false;
   }
 }
 

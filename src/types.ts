@@ -1,7 +1,20 @@
+export interface EntityMetadata {
+  file_path?: string;
+  line_number?: number;
+  end_line_number?: number;
+  entity_type?: string;
+  is_test_code?: boolean;
+  code_category?: "production" | "test" | "mock";
+  observations?: string[];
+  has_implementation?: boolean;
+  [key: string]: unknown;
+}
+
 export interface Entity extends Record<string, unknown> {
   name: string;
   entityType: string;
   observations: string[];
+  metadata?: EntityMetadata;
 }
 
 export interface Relation extends Record<string, unknown> {
@@ -80,6 +93,25 @@ export interface ScrollOptions {
   entityTypes?: string[];
   limit?: number;
   mode?: "smart" | "entities" | "relationships" | "raw";
+  includeTests?: boolean; // Default: true (backward compatible)
+  minRelevance?: number; // Default: 0.0 (no filtering)
+}
+
+/**
+ * Entity with relevance score for read_graph filtering.
+ * Score is based on entity type, test code status, and connectivity.
+ */
+export interface ScoredEntity extends Entity {
+  relevanceScore: number;
+  metadata?: EntityMetadata;
+}
+
+/**
+ * Relation with relevance score for read_graph filtering.
+ * Score is based on relation type and endpoint test code status.
+ */
+export interface ScoredRelation extends Relation {
+  relevanceScore: number;
 }
 
 export interface StreamingGraphResponse {

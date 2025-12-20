@@ -212,11 +212,16 @@ class KnowledgeGraphManager {
     limit?: number,
     entityTypes?: string[],
     mode: "smart" | "entities" | "relationships" | "raw" = "raw",
-    collection?: string
+    collection?: string,
+    includeTests: boolean = true,
+    minRelevance: number = 0.0
   ): Promise<KnowledgeGraph> {
     try {
       // Get limited raw entities and relations from Qdrant for streaming processing
-      const rawData = await this.qdrant.scrollAll({ mode, limit, entityTypes }, collection);
+      const rawData = await this.qdrant.scrollAll(
+        { mode, limit, entityTypes, includeTests, minRelevance },
+        collection
+      );
       if ("entities" in rawData && "relations" in rawData) {
         return rawData;
       }
@@ -256,9 +261,18 @@ class KnowledgeGraphManager {
     entityName: string,
     mode: "smart" | "entities" | "relationships" | "raw" = "smart",
     limit?: number,
-    collection?: string
+    collection?: string,
+    includeTests: boolean = true,
+    minRelevance: number = 0.0
   ): Promise<any> {
-    return await this.qdrant.getEntitySpecificGraph(entityName, mode, limit, collection);
+    return await this.qdrant.getEntitySpecificGraph(
+      entityName,
+      mode,
+      limit,
+      collection,
+      includeTests,
+      minRelevance
+    );
   }
 
   async searchDocs(
@@ -486,7 +500,8 @@ class MemoryServer {
         },
         {
           name: "read_graph",
-          description: "Read filtered knowledge graph with smart summarization",
+          description:
+            "Read filtered knowledge graph with smart summarization and relevance scoring",
           inputSchema: {
             type: "object",
             properties: {
@@ -514,6 +529,18 @@ class MemoryServer {
               collection: {
                 type: "string",
                 description: "Target collection name. Defaults to QDRANT_COLLECTION_NAME env var.",
+              },
+              includeTests: {
+                type: "boolean",
+                description:
+                  "Include test/mock code in results. Default: true (backward compatible). Set to false to filter out test files and mock entities.",
+                default: true,
+              },
+              minRelevance: {
+                type: "number",
+                description:
+                  "Minimum relevance score (0.0-1.0) to include entities/relations. Default: 0.0 (no filtering). Higher values filter more aggressively.",
+                default: 0.0,
               },
             },
           },
@@ -801,6 +828,9 @@ class MemoryServer {
             const entity = args.entity;
             const limit = args.limit || 150;
             const collection = args.collection;
+            // New filtering parameters with backward-compatible defaults
+            const includeTests = args.includeTests ?? true; // Default: include tests for backward compatibility
+            const minRelevance = args.minRelevance ?? 0.0; // Default: no filtering
 
             // Handle entity-specific graph
             if (entity) {
@@ -810,9 +840,17 @@ class MemoryServer {
                   entity,
                   mode,
                   tryLimit,
-                  collection
+                  collection,
+                  includeTests,
+                  minRelevance
                 );
-                const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
+                const options: ScrollOptions = {
+                  mode,
+                  entityTypes,
+                  limit: tryLimit,
+                  includeTests,
+                  minRelevance,
+                };
                 return await streamingResponseBuilder.buildStreamingResponse(
                   entityGraph.entities || [],
                   entityGraph.relations || [],
@@ -837,6 +875,8 @@ class MemoryServer {
               mode,
               entityTypes,
               limit,
+              includeTests,
+              minRelevance,
             };
 
             // Auto-cut: Exponential backoff if response exceeds 25k tokens
@@ -845,9 +885,17 @@ class MemoryServer {
                 tryLimit,
                 entityTypes,
                 mode,
-                collection
+                collection,
+                includeTests,
+                minRelevance
               );
-              const options: ScrollOptions = { mode, entityTypes, limit: tryLimit };
+              const options: ScrollOptions = {
+                mode,
+                entityTypes,
+                limit: tryLimit,
+                includeTests,
+                minRelevance,
+              };
               return await streamingResponseBuilder.buildStreamingResponse(
                 rawGraph.entities,
                 rawGraph.relations,

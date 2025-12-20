@@ -79,6 +79,10 @@ export interface ReadGraphRequest {
   entityTypes?: string[];
   entity?: string;
   collection?: string;
+  /** Filter out test/mock code entities. Default: true (backward compatible, includes tests) */
+  includeTests?: boolean;
+  /** Minimum relevance score threshold (0.0-1.0). Entities/relations below this score are filtered. Default: 0.0 */
+  minRelevance?: number;
 }
 
 export interface SearchDocsRequest {

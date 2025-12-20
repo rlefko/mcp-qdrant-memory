@@ -25,6 +25,8 @@ import type {
   TicketComment,
   TicketStatus,
   TicketPriority,
+  ScoredEntity,
+  ScoredRelation,
 } from "../types.js";
 import { TicketSource } from "../types.js";
 import { BM25Service, HybridSearchFusion } from "../bm25/bm25Service.js";
@@ -100,6 +102,123 @@ function isRelationChunk(payload: ChunkPayload): boolean {
     typeof payload.relation_target === "string" &&
     typeof payload.relation_type === "string"
   );
+}
+
+/**
+ * Entity type priority scores for relevance ranking.
+ * Higher scores = more important in graph results.
+ */
+const ENTITY_TYPE_SCORES: Record<string, number> = {
+  class: 1.5, // Highest - architectural significance
+  interface: 1.4, // Contracts
+  function: 1.3, // Core behavior
+  method: 1.2,
+  module: 1.1,
+  file: 1.0,
+  variable: 0.8,
+  import: 0.5, // Lowest - often noise
+};
+
+/**
+ * Relation type priority scores for relevance ranking.
+ * Higher scores = more important relationships.
+ */
+const RELATION_TYPE_SCORES: Record<string, number> = {
+  inherits: 1.8, // Class hierarchy - critical for understanding
+  implements: 1.6, // Interface contracts - architectural
+  extends: 1.5,
+  calls: 1.0, // Standard
+  uses: 0.9,
+  references: 0.8,
+  imports: 0.6, // Less interesting
+  contains: 0.5, // Low priority
+  tests: 0.2, // Test relations - rarely useful
+};
+
+/**
+ * Score an entity for relevance ranking in read_graph.
+ * Considers entity type, test code status, and connectivity.
+ *
+ * @param entity - The entity to score
+ * @param relations - All relations to compute connectivity bonus
+ * @param targetEntity - Optional target entity for entity-specific queries
+ * @returns Relevance score (higher = more relevant)
+ */
+function scoreGraphEntity(entity: Entity, relations: Relation[], targetEntity?: string): number {
+  let score = 1.0;
+
+  // 1. Entity type priority
+  const entityType = entity.entityType?.toLowerCase() || "";
+  score *= ENTITY_TYPE_SCORES[entityType] || 1.0;
+
+  // 2. Test/mock penalty (MODERATE - 50% as per user preference)
+  const metadata = (entity as any).metadata || {};
+  if (metadata.is_test_code === true) {
+    score *= 0.5; // 50% penalty for test code
+  }
+  if (metadata.code_category === "mock") {
+    score *= 0.4; // Additional 60% penalty for mocks (cumulative 20% of original)
+  }
+
+  // 3. Connectivity bonus (more connections = more important)
+  const connections = relations.filter(
+    (r) => r.from === entity.name || r.to === entity.name
+  ).length;
+  score *= Math.min(1.3, 1 + connections * 0.03); // Cap at 30% bonus
+
+  // 4. Distance from target (if entity-specific query)
+  if (targetEntity && entity.name !== targetEntity) {
+    const directlyConnected = relations.some(
+      (r) =>
+        (r.from === targetEntity && r.to === entity.name) ||
+        (r.to === targetEntity && r.from === entity.name)
+    );
+    if (!directlyConnected) {
+      score *= 0.7; // 30% penalty for indirect connections
+    }
+  }
+
+  return score;
+}
+
+/**
+ * Score a relation for relevance ranking in read_graph.
+ * Considers relation type and endpoint test code status.
+ *
+ * @param relation - The relation to score
+ * @param entityMap - Map of entity names to entities for test code lookup
+ * @returns Relevance score (higher = more relevant)
+ */
+function scoreRelation(relation: Relation, entityMap: Map<string, Entity>): number {
+  let score = 1.0;
+
+  // 1. Relation type priority
+  const relationType = relation.relationType?.toLowerCase() || "";
+  score *= RELATION_TYPE_SCORES[relationType] || 1.0;
+
+  // 2. Penalty if endpoints are test code
+  const fromEntity = entityMap.get(relation.from);
+  const toEntity = entityMap.get(relation.to);
+
+  const fromMetadata = (fromEntity as any)?.metadata || {};
+  const toMetadata = (toEntity as any)?.metadata || {};
+
+  if (fromMetadata.is_test_code === true) {
+    score *= 0.5; // 50% penalty
+  }
+  if (toMetadata.is_test_code === true) {
+    score *= 0.5; // 50% penalty
+  }
+
+  return score;
+}
+
+/**
+ * Check if an entity is test/mock code based on its metadata.
+ */
+function isTestCode(entity: Entity): boolean {
+  const metadata = (entity as any).metadata || {};
+  return metadata.is_test_code === true;
 }
 
 /**
@@ -1343,6 +1462,8 @@ export class QdrantPersistence {
     const mode = options?.mode || "smart";
     const entityTypeFilter = options?.entityTypes;
     const limitPerType = options?.limit || 10000; // Allow much higher default for BM25 corpus building
+    const includeTests = options?.includeTests ?? true; // Default: true (backward compatible)
+    const minRelevance = options?.minRelevance ?? 0.0; // Default: 0.0 (no filtering)
 
     // First, get raw data from Qdrant with limit enforcement and entityTypes filtering
     const rawData = await this._getRawData(limitPerType, entityTypeFilter, col);
@@ -1350,16 +1471,54 @@ export class QdrantPersistence {
     qdrantLogger.debug("Raw data retrieved", {
       entities: rawData.entities.length,
       relations: rawData.relations.length,
+      includeTests,
+      minRelevance,
     });
 
-    // Qdrant already filtered by entityTypes, no additional filtering needed
-    const filteredEntities = rawData.entities;
+    // Apply test code filtering if requested
+    let filteredEntities = rawData.entities;
+    if (!includeTests) {
+      const beforeCount = filteredEntities.length;
+      filteredEntities = filteredEntities.filter((e) => !isTestCode(e));
+      qdrantLogger.debug("Test code filtered", {
+        before: beforeCount,
+        after: filteredEntities.length,
+        removed: beforeCount - filteredEntities.length,
+      });
+    }
+
+    // Apply relevance scoring to entities
+    const scoredEntities = filteredEntities.map((entity) => ({
+      ...entity,
+      relevanceScore: scoreGraphEntity(entity, rawData.relations),
+    }));
+
+    // Apply minRelevance threshold
+    let finalEntities = scoredEntities;
+    if (minRelevance > 0) {
+      const beforeCount = finalEntities.length;
+      finalEntities = finalEntities.filter((e) => e.relevanceScore >= minRelevance);
+      qdrantLogger.debug("Relevance filtering applied", {
+        threshold: minRelevance,
+        before: beforeCount,
+        after: finalEntities.length,
+      });
+    }
+
+    // Sort by relevance score (highest first)
+    finalEntities.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    // Create entity map for relation scoring
+    const entityMap = new Map<string, Entity>();
+    finalEntities.forEach((e) => entityMap.set(e.name, e));
+
+    // Filter and score relations
     let filteredRelations = rawData.relations;
 
     // For entities mode with entityTypes filtering, filter relations to only show relevant ones
     if (entityTypeFilter && entityTypeFilter.length > 0) {
       const beforeCount = filteredRelations.length;
-      filteredRelations = this.filterRelationsForEntities(filteredRelations, filteredEntities);
+      filteredRelations = this.filterRelationsForEntities(filteredRelations, finalEntities);
       qdrantLogger.debug("Relations filtered for entity types", {
         mode,
         before: beforeCount,
@@ -1367,12 +1526,40 @@ export class QdrantPersistence {
       });
     }
 
+    // Score and sort relations
+    const scoredRelations = filteredRelations.map((relation) => ({
+      ...relation,
+      relevanceScore: scoreRelation(relation, entityMap),
+    }));
+
+    // Apply minRelevance threshold to relations
+    let finalRelations = scoredRelations;
+    if (minRelevance > 0) {
+      const beforeCount = finalRelations.length;
+      finalRelations = finalRelations.filter((r) => r.relevanceScore >= minRelevance);
+      qdrantLogger.debug("Relation relevance filtering applied", {
+        threshold: minRelevance,
+        before: beforeCount,
+        after: finalRelations.length,
+      });
+    }
+
+    // Sort relations by relevance score (highest first)
+    finalRelations.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    qdrantLogger.debug("Scoring complete", {
+      entities: finalEntities.length,
+      relations: finalRelations.length,
+      topEntityScore: finalEntities[0]?.relevanceScore,
+      topRelationScore: finalRelations[0]?.relevanceScore,
+    });
+
     // Apply mode-specific filtering before returning
     switch (mode) {
       case "relationships":
         // For relationships mode, find entities that match the relation endpoints
         const relationEntityNames = new Set<string>();
-        filteredRelations.forEach((rel) => {
+        finalRelations.forEach((rel) => {
           relationEntityNames.add(rel.from);
           relationEntityNames.add(rel.to);
         });
@@ -1386,7 +1573,7 @@ export class QdrantPersistence {
 
         // Filter relations to only include those connecting the matched entities
         const matchedEntityNames = new Set(matchedEntities.map((e) => e.name));
-        const matchedRelations = filteredRelations.filter(
+        const matchedRelations = finalRelations.filter(
           (rel) => matchedEntityNames.has(rel.from) && matchedEntityNames.has(rel.to)
         );
 
@@ -1402,8 +1589,8 @@ export class QdrantPersistence {
       case "smart":
       case "raw":
       default:
-        // All other modes return all entities
-        return { entities: filteredEntities, relations: filteredRelations };
+        // All other modes return scored and filtered entities/relations
+        return { entities: finalEntities, relations: finalRelations };
     }
   }
 
@@ -1467,10 +1654,22 @@ export class QdrantPersistence {
               const entityName = (payload as any).entity_name || (payload as any).name || "unknown";
               // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
               const entityType = (payload as any).metadata?.entity_type || payload.entity_type;
-              const entity = {
+              // Extract metadata for test code filtering (is_test_code, code_category)
+              const entityMetadata = (payload as any).metadata || {};
+              const entity: Entity = {
                 name: entityName,
                 entityType: entityType,
-                observations: payload.observations || (payload as any).metadata?.observations || [],
+                observations: payload.observations || entityMetadata.observations || [],
+                // Include full metadata for read_graph smart mode
+                metadata: {
+                  is_test_code: entityMetadata.is_test_code,
+                  code_category: entityMetadata.code_category,
+                  file_path: entityMetadata.file_path,
+                  line_number: entityMetadata.line_number,
+                  end_line_number: entityMetadata.end_line_number,
+                  entity_type: entityType,
+                  has_implementation: entityMetadata.has_implementation,
+                },
               };
               allEntities.push(entity);
 
@@ -1649,13 +1848,23 @@ export class QdrantPersistence {
   private _extractKeyModules(entities: Entity[]): string[] {
     const modules = new Set<string>();
     entities.forEach((entity) => {
-      const obs = (entity.observations || []).find(
-        (o) => o.includes("Defined in:") || o.includes("file_path")
-      );
-      if (obs) {
-        const pathMatch = obs.match(/[\/\\]([^\/\\]+)[\/\\][^\/\\]+\.py/);
-        if (pathMatch) {
-          modules.add(pathMatch[1]);
+      // Read from metadata (stored by Python indexer)
+      const filePath = entity.metadata?.file_path;
+      if (filePath) {
+        const parts = filePath.split("/");
+        // Find meaningful directory (skip empty parts from absolute paths)
+        const meaningfulParts = parts.filter((p) => p && p !== ".");
+        if (meaningfulParts.length > 1) {
+          // Try to find a src/lib/packages type directory
+          const srcIndex = meaningfulParts.findIndex((p) =>
+            ["src", "lib", "packages", "app", "components", "modules", "claude_indexer"].includes(p)
+          );
+          if (srcIndex >= 0 && meaningfulParts[srcIndex + 1]) {
+            modules.add(meaningfulParts[srcIndex + 1]);
+          } else {
+            // Fallback: use first meaningful directory
+            modules.add(meaningfulParts[0]);
+          }
         }
       }
     });
@@ -1792,10 +2001,20 @@ export class QdrantPersistence {
     entityName: string,
     mode: "smart" | "entities" | "relationships" | "raw" = "smart",
     limit?: number,
-    collection?: string
+    collection?: string,
+    includeTests: boolean = true,
+    minRelevance: number = 0.0
   ): Promise<any> {
     await this.connect();
     const col = this.resolveCollection(collection);
+
+    qdrantLogger.debug("getEntitySpecificGraph called", {
+      entityName,
+      mode,
+      limit,
+      includeTests,
+      minRelevance,
+    });
 
     // Step 1: Check if target entity exists
     const targetEntityResults = await this.client.search(col, {
@@ -1830,20 +2049,68 @@ export class QdrantPersistence {
     });
 
     // Step 4: Fetch entity details for all related entities
-    const entities = await this.fetchEntitiesByNames(Array.from(relatedEntityNames), limit, col);
+    let entities = await this.fetchEntitiesByNames(Array.from(relatedEntityNames), limit, col);
 
-    // Step 5: Apply mode-specific formatting
+    // Step 5: Apply test code filtering if requested
+    if (!includeTests) {
+      const beforeCount = entities.length;
+      entities = entities.filter((e) => !isTestCode(e));
+      qdrantLogger.debug("Test code filtered in entity graph", {
+        before: beforeCount,
+        after: entities.length,
+      });
+    }
+
+    // Step 6: Apply relevance scoring (with target entity context)
+    const scoredEntities = entities.map((entity) => ({
+      ...entity,
+      relevanceScore: scoreGraphEntity(entity, relatedRelations, entityName),
+    }));
+
+    // Step 7: Apply minRelevance threshold
+    let finalEntities = scoredEntities;
+    if (minRelevance > 0) {
+      finalEntities = finalEntities.filter((e) => e.relevanceScore >= minRelevance);
+    }
+
+    // Step 8: Sort by relevance score (highest first)
+    finalEntities.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    // Step 9: Score and filter relations
+    const entityMap = new Map<string, Entity>();
+    finalEntities.forEach((e) => entityMap.set(e.name, e));
+
+    let finalRelations = relatedRelations.map((relation) => ({
+      ...relation,
+      relevanceScore: scoreRelation(relation, entityMap),
+    }));
+
+    if (minRelevance > 0) {
+      finalRelations = finalRelations.filter((r) => r.relevanceScore >= minRelevance);
+    }
+
+    // Sort relations by relevance score
+    finalRelations.sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    qdrantLogger.debug("Entity graph scoring complete", {
+      targetEntity: entityName,
+      entities: finalEntities.length,
+      relations: finalRelations.length,
+      topEntityScore: finalEntities[0]?.relevanceScore,
+    });
+
+    // Step 10: Apply mode-specific formatting
     switch (mode) {
       case "smart":
-        return this.formatSmartEntityGraph(targetEntityResults[0], entities, relatedRelations);
+        return this.formatSmartEntityGraph(targetEntityResults[0], finalEntities, finalRelations);
       case "entities":
-        return { entities, relations: relatedRelations };
+        return { entities: finalEntities, relations: finalRelations };
       case "relationships":
-        return { entities, relations: relatedRelations };
+        return { entities: finalEntities, relations: finalRelations };
       case "raw":
-        return { entities, relations: relatedRelations };
+        return { entities: finalEntities, relations: finalRelations };
       default:
-        return { entities, relations: relatedRelations };
+        return { entities: finalEntities, relations: finalRelations };
     }
   }
 
@@ -1930,11 +2197,18 @@ export class QdrantPersistence {
       if (isMetadataChunk(payload)) {
         // Extract entity_type from metadata (new format) or fallback to top-level (backward compatibility)
         const entityType = (payload as any).metadata?.entity_type || payload.entity_type;
+        // Extract metadata for test code filtering
+        const entityMetadata = (payload as any).metadata || {};
         entities.push({
           name: payload.entity_name,
           entityType: entityType,
-          observations:
-            (payload as any).observations || (payload as any).metadata?.observations || [],
+          observations: (payload as any).observations || entityMetadata.observations || [],
+          // Include metadata for test code filtering in read_graph
+          metadata: {
+            is_test_code: entityMetadata.is_test_code,
+            code_category: entityMetadata.code_category,
+            file_path: entityMetadata.file_path,
+          },
         });
       }
     }
@@ -2136,11 +2410,17 @@ export class QdrantPersistence {
     const queryVector = await this.generateEmbedding(query);
 
     // Filter for design document entity types
+    // Use nested filter to enforce OR condition (should alone is boosting-only)
     const filter: any = {
-      must: [{ key: "chunk_type", match: { value: "metadata" } }],
-      should: [
-        { key: "entity_type", match: { any: designDocTypes } },
-        { key: "metadata.entity_type", match: { any: designDocTypes } },
+      must: [
+        { key: "chunk_type", match: { value: "metadata" } },
+        // Nested filter: at least one of these must match
+        {
+          should: [
+            { key: "entity_type", match: { any: designDocTypes } },
+            { key: "metadata.entity_type", match: { any: designDocTypes } },
+          ],
+        },
       ],
     };
 
